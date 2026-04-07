@@ -12,7 +12,7 @@
 # ------------------------------------------------------------------------
 import copy
 from typing import Optional, List
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from timm.layers import DropPath, to_2tuple, trunc_normal_
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
@@ -479,7 +479,8 @@ class Transformer(nn.Module):
             if N==0:
                 return None
             feat_location = hs[-1, :N*2].transpose(0,1).contiguous().view(bs*N,2,c)
-            hs_avg = self.embedding(seq[:,1:2*N+1].view(-1,2)).transpose(0,1)
+            # hs_avg = self.embedding(seq[:,1:2*N+1].view(-1,2)).transpose(0,1)
+            hs_avg = self.embedding(seq[:,1:2*N+1].reshape(-1,2)).transpose(0,1)
             hs_avg = hs_avg + feat_location.transpose(0,1)
             src_reg = torch.repeat_interleave(src, N, dim=0)
             mask_reg = torch.repeat_interleave(mask, N, dim=0)

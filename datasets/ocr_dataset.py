@@ -220,6 +220,14 @@ def build(image_set, args):
             img_folder = root / "icdar2015" / "test_images"; ann_file = root / "icdar2015" / "ic15_test.json"
         elif dataset_name == 'inversetext':
             img_folder = root / "inversetext" / "test_images"; ann_file = root / "inversetext" / "test_poly.json"
+        
+        elif dataset_name == 'ICDAR2019_train':
+            img_folder = root / "ICDAR2019" / "train_imgs"
+            ann_file = root / "ICDAR2019" / "train.json"
+
+        elif dataset_name == 'ICDAR2019_test':
+            img_folder = root / "ICDAR2019" / "test_imgs"
+            ann_file = root / "ICDAR2019" / "test.json"
         else:
             raise NotImplementedError
         

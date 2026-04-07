@@ -90,11 +90,17 @@ def evaluate(model, criterion, data_loader, device, output_dir, chars, start_ind
         samples = samples.to(device)
         dataset_names = [target['dataset_name'] for target in targets]
         targets = [{k: v.to(device) for k, v in t.items() if k != 'dataset_name'} for t in targets]
-        seq = torch.ones(len(targets), 1).to(samples.mask) * start_index
-        torch.cuda.synchronize()
+        # seq = torch.ones(len(targets), 1).to(samples.mask) * start_index
+        seq = torch.ones(len(targets), 1, device=device) * start_index
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+
         t0 = time.time()
-        outputs = model(samples, seq,seq, text_length)
-        torch.cuda.synchronize()
+        outputs = model(samples, seq, seq, text_length)
+
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+
         t1 = time.time()
         cnt += 1
         total += t1-t0
@@ -103,7 +109,7 @@ def evaluate(model, criterion, data_loader, device, output_dir, chars, start_ind
             continue
         outputs, values, rec_scores = outputs
         if visualize:
-            samples_ = samples.to(torch.device('cpu')); outputs_ = outputs.cpu()
+            samples_ = samples.cpu(); outputs_ = outputs.cpu()
             vis_images = vis_output_seqs(samples_, outputs_, rec_scores, False, True, text_length, chars)
             for vis_image, target, dataset_name in zip(vis_images, targets, dataset_names):
                 save_path = os.path.join(output_dir, 'vis', dataset_name, '{:06d}.jpg'.format(target['image_id'].item()))
@@ -136,7 +142,9 @@ def evaluate(model, criterion, data_loader, device, output_dir, chars, start_ind
                 }
                 results.append(result)
 
-    json_path = os.path.join(output_dir, 'results', dataset_name+'.json')
+    # json_path = os.path.join(output_dir, 'results', dataset_name+'.json')
+    dataset_name = dataset_names[0]
+    json_path = os.path.join(output_dir, 'results', dataset_name + '.json')
     os.makedirs(os.path.dirname(json_path), exist_ok=True)
     results_json = json.dumps(results, indent=4)
     with open(json_path, 'w') as f:
