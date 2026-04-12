@@ -2,3 +2,5 @@ datasets/convert_ic13_to_coco.py
 datasets/convert_synth.py
 datasets/converter.py
 datasets/custom.py
+data/
+__pycache__/

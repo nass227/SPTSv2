@@ -133,10 +133,10 @@ def get_args_parser():
 
 def main(args):
     utils.init_distributed_mode(args)
-    args.dataset_file = 'ocr'#or custom_text or 'synth_text' 
-    args.train_dataset = 'ICDAR2019_train'# or custom_train or synthtext_train'
-    args.val_dataset = 'ICDAR2019_test' # or 'synthtext_val
-    args.data_root = r'./Data' # r'../Datasets/'
+    # args.dataset_file = 'ocr'#or custom_text or 'synth_text' 
+    # args.train_dataset = 'ICDAR2019_train'# or custom_train or synthtext_train'
+    # args.val_dataset = 'ICDAR2019_test' # or 'synthtext_val
+    # args.data_root = r'./Data' # r'../Datasets/'
 
     args.pad_rec = True # because of vocab error
 
@@ -279,15 +279,6 @@ def main(args):
 
 
 if __name__ == '__main__':
-    import json
-    with open('./Data/ICDAR2019/train.json', 'r') as f:
-        data = json.load(f)
-        print(f"Number of images: {len(data['images'])}")
-        print(f"Number of annotations: {len(data['annotations'])}")
-        if len(data['annotations']) > 0:
-            print(f"Sample annotation: {data['annotations'][0]}")
-        else:
-            print("WARNING: No annotations found in JSON!")
     parser = argparse.ArgumentParser('SPTSv2 yyds', parents=[get_args_parser()])
     args = parser.parse_args()
     if args.output_dir:
