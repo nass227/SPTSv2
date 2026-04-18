@@ -4,3 +4,5 @@ datasets/converter.py
 datasets/custom.py
 data/
 __pycache__/
+results/
+models/weights/

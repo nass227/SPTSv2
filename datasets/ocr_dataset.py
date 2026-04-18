@@ -19,16 +19,22 @@ import numpy as np
 import datasets.sptsv2_transforms as T
 
 
+# class CocoDetection(torchvision.datasets.CocoDetection):
+#     def __init__(self, img_folder, ann_file, transforms, return_masks, dataset_name, max_length):
+#         super(CocoDetection, self).__init__(img_folder, ann_file)
+#         self._transforms = transforms
+#         self.prepare = ConvertCocoPolysToMask(return_masks, dataset_name, max_length)
 class CocoDetection(torchvision.datasets.CocoDetection):
     def __init__(self, img_folder, ann_file, transforms, return_masks, dataset_name, max_length):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(return_masks, dataset_name, max_length)
-
+        self.ann_file = str(ann_file)
     def __getitem__(self, idx):
         img, target = super(CocoDetection, self).__getitem__(idx)
         image_id = self.ids[idx]
-        target = {'image_id': image_id, 'annotations': target}
+        # target = {'image_id': image_id, 'annotations': target}
+        target = {'image_id': image_id, 'annotations': target, 'gt_json_path': self.ann_file}
         img, target = self.prepare(img, target)
         if self._transforms is not None:
             img1, target1 = self._transforms(img, target)
@@ -41,6 +47,33 @@ class ConvertCocoPolysToMask(object):
         self.return_masks = return_masks
         self.dataset_name = dataset_name
         self.max_length = max_length
+        self.charset = None
+        self.unk_index = None
+        self.pad_index = None
+        if "ICDAR2019" in dataset_name:
+            charset_path = Path(__file__).resolve().parent.parent / "Data" / "ICDAR2019" / "icdar2019_charset.txt"
+            if charset_path.exists():
+                with open(charset_path, "r", encoding="utf-8") as f:
+                    self.charset = f.read().rstrip("\n")
+                self.unk_index = len(self.charset)
+                self.pad_index = len(self.charset) + 1
+
+    def _normalize_rec(self, rec):
+        rec = [int(x) for x in rec]
+        # Backward-compatible fix for older ICDAR conversion that injected SOS/EOS.
+        if len(rec) >= self.max_length + 2:
+            rec = rec[1:]
+        rec = rec[:self.max_length]
+        if self.pad_index is not None:
+            rec = [
+                x if 0 <= x <= self.pad_index else self.unk_index
+                for x in rec
+            ]
+            if len(rec) < self.max_length:
+                rec.extend([self.pad_index] * (self.max_length - len(rec)))
+        elif len(rec) < self.max_length:
+            rec.extend([0] * (self.max_length - len(rec)))
+        return rec
 
     def __call__(self, image, target):
         w, h = image.size
@@ -81,7 +114,7 @@ class ConvertCocoPolysToMask(object):
         target["orig_size"] = torch.as_tensor([int(h), int(w)])
         target["size"] = torch.as_tensor([int(h), int(w)])
 
-        recog = [obj['rec'][:self.max_length] for obj in anno]
+        recog = [self._normalize_rec(obj['rec']) for obj in anno]
         recog = torch.tensor(recog, dtype=torch.long).reshape(-1, self.max_length)
         target["rec"]  = recog[keep]
 

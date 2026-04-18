@@ -224,10 +224,10 @@ def split_train_test(train_imgs_folder, train_gt_folder, test_imgs_folder, test_
 
 def main():
     # ===== CONFIGURE THESE PATHS =====
-    TRAIN_IMGS = "train_imgs"  # Path to your training images folder
-    TRAIN_GT = "train_gt"      # Path to your training GT folder
-    TEST_IMGS = "test_imgs"    # Path to empty test images folder
-    TEST_GT = "test_gt"        # Path to empty test GT folder
+    TRAIN_IMGS = r"C:/Users/L13 GEN2/Desktop/PFE/SPTSv2/Data/ICDAR2019/TrainImages/TrainImages"  # Path to your training images folder
+    TRAIN_GT = r"C:/Users/L13 GEN2/Desktop/PFE/SPTSv2/Data/ICDAR2019/TrainGT/TrainGT"      # Path to your training GT folder
+    TEST_IMGS = r"C:/Users/L13 GEN2/Desktop/PFE/SPTSv2/Data/ICDAR2019/test_imgs"    # Path to empty test images folder
+    TEST_GT = r"C:/Users/L13 GEN2/Desktop/PFE/SPTSv2/Data/ICDAR2019/test_gt"        # Path to empty test GT folder
     TRAIN_RATIO = 0.8          # 80% training, 20% testing
     RANDOM_SEED = 42           # Change this for different randomization
     # =================================
