@@ -10,13 +10,16 @@ import numpy as np
 # ============================================
 # CONFIGURATION
 # ============================================
-TRAIN_IMAGE_DIR = r"../Data/ICDAR2019/train_imgs"
-TRAIN_GT_DIR = r"../Data/ICDAR2019/train_gt"
-TEST_IMAGE_DIR = r"../Data/ICDAR2019/test_imgs"
-TEST_GT_DIR = r"../Data/ICDAR2019/test_gt"
+TRAIN_IMAGE_DIR = r"E:\PFE\ICDAR2017\ch8_training_images_1"
+TRAIN_GT_DIR = r"E:\PFE\ICDAR2017\ch8_training_localization_transcription_gt_v2"
+TEST_IMAGE_DIR = r"E:\PFE\ICDAR2017\ch8_validation_images"
+TEST_GT_DIR = r"E:\PFE\ICDAR2017\ch8_validation_localization_transcription_gt_v2"
 
-OUTPUT_REPORT = "dataset_analysis_report.txt"
+OUTPUT_REPORT = "dataset_analysis_icdar2017.txt"
 OUTPUT_CHARTS_DIR = "dataset_charts"
+
+# Image extensions to look for
+IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.JPG', '.JPEG', '.PNG', '.GIF']
 
 # Create charts directory
 Path(OUTPUT_CHARTS_DIR).mkdir(exist_ok=True)
@@ -24,6 +27,86 @@ Path(OUTPUT_CHARTS_DIR).mkdir(exist_ok=True)
 # ============================================
 # Helper Functions
 # ============================================
+
+def find_image(image_dir: Path, stem: str) -> tuple[Path, str] | None:
+    """Find image file with exact stem match"""
+    for ext in IMAGE_EXTENSIONS:
+        cand = image_dir / f"{stem}{ext}"
+        if cand.is_file():
+            return cand, ext
+    return None
+
+def find_image_with_prefix(image_dir: Path, gt_stem: str) -> tuple[Path, str] | None:
+    """
+    Find image file with possible prefix variations.
+    Handles cases like:
+    - GT: gt_img_123 -> Image: img_123
+    - GT: img_123 -> Image: img_123
+    - GT: gt_123 -> Image: 123 or gt_123
+    - GT: gt_123 -> Image: gt_123 (same name)
+    - GT: 123 -> Image: gt_123
+    """
+    # Try exact match first (most common case when names match exactly)
+    result = find_image(image_dir, gt_stem)
+    if result:
+        return result
+    
+    # Try removing 'gt_' prefix
+    if gt_stem.startswith('gt_'):
+        without_gt = gt_stem[3:]  # Remove 'gt_'
+        result = find_image(image_dir, without_gt)
+        if result:
+            return result
+        
+        # Try removing 'gt_' and adding other common prefixes
+        for prefix in ['', 'img_', 'image_']:
+            candidate = f"{prefix}{without_gt}"
+            result = find_image(image_dir, candidate)
+            if result:
+                return result
+    
+    # Try adding 'gt_' prefix
+    if not gt_stem.startswith('gt_'):
+        with_gt = f"gt_{gt_stem}"
+        result = find_image(image_dir, with_gt)
+        if result:
+            return result
+    
+    # Try common prefix variations
+    prefixes_to_try = ['', 'img_', 'image_', 'gt_', 'gt_img_', 'img_gt_']
+    suffixes_to_try = ['', '_img', '_image', '_gt']
+    
+    for prefix in prefixes_to_try:
+        for suffix in suffixes_to_try:
+            candidate = f"{prefix}{gt_stem}{suffix}"
+            result = find_image(image_dir, candidate)
+            if result:
+                return result
+    
+    # Try removing numeric prefixes (e.g., '123_' from '123_gt_456')
+    import re
+    # Check if stem has pattern like number_* 
+    match = re.match(r'^\d+_(.+)$', gt_stem)
+    if match:
+        remaining = match.group(1)
+        result = find_image_with_prefix(image_dir, remaining)
+        if result:
+            return result
+    
+    # Try removing suffixes like '_gt'
+    for suffix in ['_gt', '_img', '_image']:
+        if gt_stem.endswith(suffix):
+            without_suffix = gt_stem[:-len(suffix)]
+            result = find_image(image_dir, without_suffix)
+            if result:
+                return result
+            
+            # Also try with prefix variations
+            result = find_image_with_prefix(image_dir, without_suffix)
+            if result:
+                return result
+    
+    return None
 
 def get_image_info(img_path):
     """Get image dimensions and format"""
@@ -78,34 +161,47 @@ def analyze_dataset(image_dir, gt_dir, dataset_name):
     print(f"Analyzing {dataset_name} Dataset")
     print(f"{'='*60}")
     
+    # Convert to Path objects
+    image_dir_path = Path(image_dir)
+    gt_dir_path = Path(gt_dir)
+    
     # Get all GT files
     gt_files = [f for f in os.listdir(gt_dir) if f.endswith('.txt')]
     
-    # Match images with GT files
-    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.JPG', '.JPEG', '.PNG', '.GIF']
+    # Match images with GT files using the improved matching function
     valid_pairs = []
+    unmatched_gt = []
     
     for gt_file in gt_files:
         base_name = gt_file.replace('.txt', '')
-        img_found = False
         
-        for ext in image_extensions:
-            img_path = Path(image_dir) / (base_name + ext)
-            if img_path.exists():
-                valid_pairs.append({
-                    'gt_file': gt_file,
-                    'img_path': img_path,
-                    'base_name': base_name
-                })
-                img_found = True
-                break
+        # Use the improved matching function
+        result = find_image_with_prefix(image_dir_path, base_name)
         
-        if not img_found:
+        if result:
+            img_path, ext = result
+            valid_pairs.append({
+                'gt_file': gt_file,
+                'img_path': img_path,
+                'base_name': base_name,
+                'matched_name': img_path.stem
+            })
+        else:
+            unmatched_gt.append(gt_file)
             print(f"  Warning: No image found for {gt_file}")
     
     print(f"\nBASIC STATISTICS:")
     print(f"  Total GT files: {len(gt_files)}")
     print(f"  Valid image-GT pairs: {len(valid_pairs)}")
+    if unmatched_gt:
+        print(f"  Unmatched GT files: {len(unmatched_gt)}")
+        if len(unmatched_gt) <= 10:  # Show first 10 unmatched files
+            for gt_file in unmatched_gt[:10]:
+                print(f"    - {gt_file}")
+        elif len(unmatched_gt) > 10:
+            print(f"    (showing first 10 of {len(unmatched_gt)} unmatched files)")
+            for gt_file in unmatched_gt[:10]:
+                print(f"    - {gt_file}")
     
     # Analyze images
     image_stats = {
@@ -161,31 +257,34 @@ def analyze_dataset(image_dir, gt_dir, dataset_name):
                 annotation_stats['empty_text_count'] += 1
     
     # Calculate statistics
-    print(f"\n IMAGE STATISTICS:")
-    print(f"  Total images: {len(valid_pairs)}")
-    print(f"  Total size: {image_stats['total_size_mb']:.2f} MB")
-    print(f"  Average width: {np.mean(image_stats['widths']):.1f} px")
-    print(f"  Average height: {np.mean(image_stats['heights']):.1f} px")
-    print(f"  Average aspect ratio: {np.mean(image_stats['aspect_ratios']):.2f}")
-    print(f"  Width range: {min(image_stats['widths'])} - {max(image_stats['widths'])} px")
-    print(f"  Height range: {min(image_stats['heights'])} - {max(image_stats['heights'])} px")
+    if image_stats['widths']:
+        print(f"\n IMAGE STATISTICS:")
+        print(f"  Total images: {len(valid_pairs)}")
+        print(f"  Total size: {image_stats['total_size_mb']:.2f} MB")
+        print(f"  Average width: {np.mean(image_stats['widths']):.1f} px")
+        print(f"  Average height: {np.mean(image_stats['heights']):.1f} px")
+        print(f"  Average aspect ratio: {np.mean(image_stats['aspect_ratios']):.2f}")
+        print(f"  Width range: {min(image_stats['widths'])} - {max(image_stats['widths'])} px")
+        print(f"  Height range: {min(image_stats['heights'])} - {max(image_stats['heights'])} px")
     
-    print(f"\n ANNOTATION STATISTICS:")
-    print(f"  Total annotations: {annotation_stats['total_annotations']}")
-    print(f"  Valid text annotations: {annotation_stats['valid_text_annotations']}")
-    print(f"  Empty/ignored text (###): {annotation_stats['empty_text_count']}")
-    print(f"  Average annotations per image: {np.mean(annotation_stats['annotations_per_image']):.2f}")
-    print(f"  Min annotations per image: {min(annotation_stats['annotations_per_image'])}")
-    print(f"  Max annotations per image: {max(annotation_stats['annotations_per_image'])}")
+    if annotation_stats['annotations_per_image']:
+        print(f"\n ANNOTATION STATISTICS:")
+        print(f"  Total annotations: {annotation_stats['total_annotations']}")
+        print(f"  Valid text annotations: {annotation_stats['valid_text_annotations']}")
+        print(f"  Empty/ignored text (###): {annotation_stats['empty_text_count']}")
+        print(f"  Average annotations per image: {np.mean(annotation_stats['annotations_per_image']):.2f}")
+        print(f"  Min annotations per image: {min(annotation_stats['annotations_per_image'])}")
+        print(f"  Max annotations per image: {max(annotation_stats['annotations_per_image'])}")
     
-    print(f"\n SCRIPT/LANGUAGE DISTRIBUTION:")
-    total_scripts = sum(annotation_stats['script_distribution'].values())
-    for script, count in sorted(annotation_stats['script_distribution'].items(), key=lambda x: x[1], reverse=True):
-        percentage = (count / total_scripts) * 100 if total_scripts > 0 else 0
-        print(f"  {script:12s}: {count:6d} ({percentage:5.1f}%)")
+    if annotation_stats['script_distribution']:
+        print(f"\n SCRIPT/LANGUAGE DISTRIBUTION:")
+        total_scripts = sum(annotation_stats['script_distribution'].values())
+        for script, count in sorted(annotation_stats['script_distribution'].items(), key=lambda x: x[1], reverse=True):
+            percentage = (count / total_scripts) * 100 if total_scripts > 0 else 0
+            print(f"  {script:12s}: {count:6d} ({percentage:5.1f}%)")
     
-    print(f"\n TEXT LENGTH STATISTICS:")
     if annotation_stats['text_lengths']:
+        print(f"\n TEXT LENGTH STATISTICS:")
         print(f"  Average text length: {np.mean(annotation_stats['text_lengths']):.2f} characters")
         print(f"  Median text length: {np.median(annotation_stats['text_lengths']):.1f} characters")
         print(f"  Min text length: {min(annotation_stats['text_lengths'])}")
@@ -302,7 +401,7 @@ def generate_text_report(train_stats, test_stats):
     
     with open(OUTPUT_REPORT, 'w', encoding='utf-8') as f:
         f.write("="*80 + "\n")
-        f.write("ICDAR 2019 DATASET ANALYSIS REPORT\n")
+        f.write("ICDAR 2017 DATASET ANALYSIS REPORT\n")
         f.write("="*80 + "\n\n")
         
         # Overall summary
@@ -324,15 +423,17 @@ def generate_text_report(train_stats, test_stats):
             f.write(f"Images: {stats['num_images']}\n")
             f.write(f"Annotations: {stats['num_annotations']}\n")
             f.write(f"Valid text annotations: {stats['valid_annotations']}\n")
-            f.write(f"Average annotations per image: {np.mean(stats['annotations_per_image']):.2f}\n")
-            f.write(f"Average text length: {np.mean(stats['text_lengths']):.2f} characters\n")
+            if stats['annotations_per_image']:
+                f.write(f"Average annotations per image: {np.mean(stats['annotations_per_image']):.2f}\n")
+            if stats['text_lengths']:
+                f.write(f"Average text length: {np.mean(stats['text_lengths']):.2f} characters\n")
             
-            f.write(f"\nScript/Language Distribution:\n")
-            total = sum(stats['script_distribution'].values())
-            for script, count in sorted(stats['script_distribution'].items(), key=lambda x: x[1], reverse=True):
-                percentage = (count / total) * 100
-                f.write(f"  {script:12s}: {count:6d} ({percentage:5.1f}%)\n")
-    
+            if stats['script_distribution']:
+                f.write(f"\nScript/Language Distribution:\n")
+                total = sum(stats['script_distribution'].values())
+                for script, count in sorted(stats['script_distribution'].items(), key=lambda x: x[1], reverse=True):
+                    percentage = (count / total) * 100
+                    f.write(f"  {script:12s}: {count:6d} ({percentage:5.1f}%)\n")
     
     print(f"\nText report saved to '{OUTPUT_REPORT}'")
 
@@ -342,7 +443,7 @@ def generate_text_report(train_stats, test_stats):
 
 def main():
     print("\n" + "="*60)
-    print("ICDAR 2019 DATASET ANALYSIS TOOL")
+    print("ICDAR 2017 DATASET ANALYSIS TOOL")
     print("="*60)
     
     # Check if directories exist
@@ -378,7 +479,7 @@ def main():
         train_stats = analyze_dataset(TRAIN_IMAGE_DIR, TRAIN_GT_DIR, "Training")
         test_stats = analyze_dataset(TEST_IMAGE_DIR, TEST_GT_DIR, "Test")
         
-        # Create visualizations
+        # Create visualizations (uncomment when matplotlib is available)
         # print(f"\nCreating visualizations...")
         # create_visualizations(train_stats, test_stats)
     
