@@ -103,7 +103,7 @@ def get_args_parser():
     parser.add_argument('--transformer_type', type=str, default='vanilla', help='vanilla, linear')
 
     # dataset parameters
-    parser.add_argument('--dataset_file', default='custom_text')
+    parser.add_argument('--dataset_file', default='ocr')
     parser.add_argument('--train_dataset', type=str)
     parser.add_argument('--val_dataset', type=str)
     parser.add_argument('--data_root', type=str)
