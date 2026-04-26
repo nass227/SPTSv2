@@ -44,7 +44,9 @@ def get_args_parser():
                         help="Path to the pretrained model. If set, only the mask head will be trained")
     # Data parameters
     parser.add_argument('--bins', type=int, default=1000)
-    parser.add_argument('--chars', type=str, default=' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~')
+    parser.add_argument('--chars',         type=str,
+                        default='!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                                '[\]^_`abcdefghijklmnopqrstuvwxyz{|}~àâäéèêëîïôùûüÿæœçÀÂÄÉÈÊËÎÏÔÙÛÜŸÆŒÇ')
     parser.add_argument('--padding_bins', type=int, default=0)
     parser.add_argument('--num_box', type=int, default=60)
     parser.add_argument('--pts_key', type=str, default='center_pts')
