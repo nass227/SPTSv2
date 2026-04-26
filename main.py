@@ -273,7 +273,7 @@ def main(args):
                 and 'lr_scheduler' in checkpoint
                 and 'epoch'        in checkpoint):
             optimizer.load_state_dict(checkpoint['optimizer'])
-            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            # lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
 
     # ── Évaluation seule ────────────────────────────────────────────────
@@ -312,7 +312,7 @@ def main(args):
             args.print_freq,
             args.max_length,
         )
-        lr_scheduler.step()
+        # lr_scheduler.step()
 
         # ── Sauvegarde checkpoint ────────────────────────────────────────
         if args.output_dir:
