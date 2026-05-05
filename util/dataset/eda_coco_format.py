@@ -7,9 +7,9 @@ import os
 # ============================================
 # CONFIGURATION
 # ============================================
-train_json_path = r"E:\PFE\ICDAR_cleaned\trainannotations_train_all.json"
-test_json_path = r"E:\PFE\ICDAR_cleaned\annotations_test_all.json"
-output_dir = r"E:\PFE\ICDAR2017\eda_results"
+train_json_path = r"D:\ICDAR2019\train_annotations.json"
+test_json_path = r"D:\ICDAR2019\test_annotations.json"
+output_dir = r"D:\ICDAR2019\eda_results_raw.json"
 os.makedirs(output_dir, exist_ok=True)
 
 # Complete character set to check

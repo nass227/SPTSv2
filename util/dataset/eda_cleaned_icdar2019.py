@@ -252,7 +252,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Small EDA for cleaned ICDAR2019 JSON.")
     parser.add_argument(
         "--input",
-        default=r"E:\PFE\ICDAR2019\train_full_labels_cleaned.json",
+        default=r"D:\ICDAR2019\test_annotations.json",
         help="Path to cleaned JSON file",
     )
     args = parser.parse_args()

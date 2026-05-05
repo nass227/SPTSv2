@@ -13,6 +13,7 @@ import torch
 import numpy as np
 from typing import Iterable
 from tqdm import tqdm
+from torch.cuda.amp import autocast
 
 import util.misc_sptsv2 as utils
 from util.visualize import vis_output_seqs, convert_rec_to_str
@@ -75,8 +76,9 @@ def _greedy_match_centers(gt_items, preds, oh, ow):
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0, 
-                    lr_scheduler: list = [0], print_freq: int = 10, text_length: int = 25):
+                    device: torch.device, epoch: int, max_norm: float = 0,
+                    lr_scheduler: list = [0], print_freq: int = 10,
+                    text_length: int = 25, scaler=None):
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -86,28 +88,33 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     optimizer.param_groups[1]['lr'] = lr_scheduler[epoch] * 0.1
 
     for samples, input_box_seqs, input_label_seqs, output_box_seqs, output_label_seqs in metric_logger.log_every(data_loader, print_freq, header):
-        samples = samples.to(device); input_box_seqs = input_box_seqs.to(device); input_label_seqs = input_label_seqs.to(device); output_box_seqs = output_box_seqs.to(device)
+        samples = samples.to(device)
+        input_box_seqs = input_box_seqs.to(device)
+        input_label_seqs = input_label_seqs.to(device)
+        output_box_seqs = output_box_seqs.to(device)
         output_label_seqs = output_label_seqs.to(device)
+
         if not all(input_label_seqs.tolist()):
             continue
-        output_seqs = torch.cat([output_box_seqs.flatten(),output_label_seqs.flatten() ])
-        outputs_box, outputs_label = model(samples, input_box_seqs, input_label_seqs, text_length)
-        outputs_box = outputs_box.reshape(-1, outputs_box.shape[-1])
-        outputs_label = outputs_label.reshape(-1, outputs_label.shape[-1])
-        outputs = torch.cat([outputs_box,outputs_label],0)
-        loss = criterion(outputs, output_seqs.flatten())
 
-        loss_dict = {'at':loss}
-        weight_dict = {'at':1}
-        losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
-        # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = utils.reduce_dict(loss_dict)
-        loss_dict_reduced_unscaled = {f'{k}_unscaled': v
-                                      for k, v in loss_dict_reduced.items()}
-        loss_dict_reduced_scaled = {k: v * weight_dict[k]
-                                    for k, v in loss_dict_reduced.items() if k in weight_dict}
+        output_seqs = torch.cat([output_box_seqs.flatten(), output_label_seqs.flatten()])
+
+        with autocast(enabled=(scaler is not None)):
+            outputs_box, outputs_label = model(samples, input_box_seqs, input_label_seqs, text_length)
+            outputs_box   = outputs_box.reshape(-1, outputs_box.shape[-1])
+            outputs_label = outputs_label.reshape(-1, outputs_label.shape[-1])
+            outputs = torch.cat([outputs_box, outputs_label], 0)
+            loss    = criterion(outputs, output_seqs.flatten())
+
+        loss_dict  = {'at': loss}
+        weight_dict = {'at': 1}
+        losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict if k in weight_dict)
+
+        loss_dict_reduced         = utils.reduce_dict(loss_dict)
+        loss_dict_reduced_unscaled = {f'{k}_unscaled': v for k, v in loss_dict_reduced.items()}
+        loss_dict_reduced_scaled   = {k: v * weight_dict[k]
+                                      for k, v in loss_dict_reduced.items() if k in weight_dict}
         losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
-
         loss_value = losses_reduced_scaled.item()
 
         if not math.isfinite(loss_value):
@@ -116,14 +123,22 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             sys.exit(1)
 
         optimizer.zero_grad()
-        losses.backward()
-        if max_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        optimizer.step()
-         
+        if scaler is not None:
+            scaler.scale(losses).backward()
+            if max_norm > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            losses.backward()
+            if max_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            optimizer.step()
+
         metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-    # gather the stats from all processes
+
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}

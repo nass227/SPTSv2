@@ -19,35 +19,35 @@ from collections import defaultdict
 datasets = [
     {
         "name": "ICDAR2013",
-        "ann_train": r"E:\PFE\ICDAR2013\ICDAR2013\train.json",
-        "ann_test": r"E:\PFE\ICDAR2013\ICDAR2013\test.json",
-        "img_train": r"E:\PFE\ICDAR2013\ICDAR2013\train_imgs",
-        "img_test": r"E:\PFE\ICDAR2013\ICDAR2013\test_imgs",
+        "ann_train": r"D:\ICDAR2013\train.json",
+        "ann_test": r"D:\ICDAR2013\test.json",
+        "img_train": r"D:\ICDAR2013\Train_Images",
+        "img_test": r"D:\ICDAR2013\Test_Images",
     },
     {
         "name": "ICDAR2015",
-        "ann_train": r"E:\PFE\ICDAR2015\ICDAR2015\train.json",
-        "ann_test": r"E:\PFE\ICDAR2015\ICDAR2015\test.json",
-        "img_train": r"E:\PFE\ICDAR2015\ICDAR2015\train_imgs",
-        "img_test": r"E:\PFE\ICDAR2015\ICDAR2015\test_imgs",
+        "ann_train": r"D:\ICDAR2015\train.json",
+        "ann_test": r"D:\ICDAR2015\test.json",
+        "img_train": r"D:\ICDAR2015\train_images",
+        "img_test": r"D:\ICDAR2015\test_images",
     },
     {
         "name": "ICDAR2017",
-        "ann_train": r"E:\PFE\ICDAR2017\ICDAR2017_cleaned_removed\train.json",
-        "ann_test": r"E:\PFE\ICDAR2017\ICDAR2017_cleaned_removed\test.json",
-        "img_train": r"E:\PFE\ICDAR2017\ICDAR2017_cleaned_removed\train_imgs",
-        "img_test": r"E:\PFE\ICDAR2017\ICDAR2017_cleaned_removed\test_imgs",
+        "ann_train": r"D:\ICDAR2017\train.json",
+        "ann_test": r"D:\ICDAR2017\test.json",
+        "img_train": r"D:\ICDAR2017\train_images",
+        "img_test": r"D:\ICDAR2017\test_images",
     },
     {
         "name": "ICDAR2019",
-        "ann_train": r"E:\PFE\ICDAR2019\split_dataset_cleaned\train.json",
-        "ann_test": r"E:\PFE\ICDAR2019\split_dataset_cleaned\test.json",
-        "img_train": r"E:\PFE\ICDAR2019\split_dataset_cleaned\train_images",
-        "img_test": r"E:\PFE\ICDAR2019\split_dataset_cleaned\test_images",
+        "ann_train": r"D:\ICDAR2019\coco_train.json",
+        "ann_test": r"D:\ICDAR2019\coco_test.json",
+        "img_train": r"D:\ICDAR2019\train_images",
+        "img_test": r"D:\ICDAR2019\test_images",
     },
 ]
 
-output_dir = r"E:\PFE\ICDAR"
+output_dir = r"D:\ICDAR"
 output_train = os.path.join(output_dir, "images_train")
 output_test = os.path.join(output_dir, "images_test")
 

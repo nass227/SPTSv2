@@ -31,6 +31,7 @@ Usage:
       [--rec-string]   # also store original text as rec_string
       [--max-len 25]   # max text length (default 25)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,7 +53,7 @@ from PIL import Image as PILImage
 #   94  – 111 : French lowercase  à â ä é è ê ë î ï ô ù û ü ÿ æ œ ç  (18 chars)
 #   112 – 129 : French uppercase  À Â Ä É È Ê Ë Î Ï Ô Ù Û Ü Ÿ Æ Œ Ç  (18 chars)
 #
-# PAD_IDX = 
+# PAD_IDX = 128
 # Characters not in CHARS are silently dropped during encoding.
 # ---------------------------------------------------------------------------
 CHARS: str = (
