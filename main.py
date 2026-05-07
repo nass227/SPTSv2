@@ -15,6 +15,10 @@ python main.py --train_dataset ic17_train  --val_dataset ic17_val  --data_root "
 
 nohup python main.py --train_dataset icdarall_train --val_dataset icdarall_test --data_root "../new_data" --batch_size 8 --lr 5e-4 --lr_backbone 1e-5 --warmup_epochs 10 --warmup_min_lr 1e-7 --min_lr 1e-5 --epochs 250 --pre_norm --num_workers 4 --pad_rec --early_stop --early_stop_patience 30 --early_stop_delta 1e-4 --output_dir "./results_new/icdarall" --device cuda --train > train.log 2>&1 &
 CUDA_VISIBLE_DEVICES=0 nohup python main.py --train_dataset icdarall_train --val_dataset icdarall_test --data_root "../new_data" --lr 5e-4 --lr_backbone 1e-5 --epochs 250 --warmup_epochs 10 --warmup_min_lr 1e-7 --min_lr 1e-5 --batch_size 8 --pre_norm --num_workers 4 --pad_rec --early_stop --early_stop_patience 30 --early_stop_delta 1e-4 --output_dir "./results_new/icdarall" --train --amp > train.log 2>&1 &
+
+on colab 
+!python3.10 main.py --train_dataset ICDAR2019_train --val_dataset ICDAR2019_test --data_root  "/content/Data" --lr 5e-4 --lr_backbone 1e-5 --epochs 250 --warmup_epochs 10 --warmup_min_lr 1e-7 --min_lr 1e-5 --batch_size 8 --pre_norm --num_workers 1 --pad_rec --early_stop --early_stop_patience 30 --early_stop_delta 1e-4 --output_dir  "/content/results_new" --train --resume "/content/checkpoint.pth" --amp --max_size_train 640 --min_size_train 320 384 448 512 --max_size_test 768 --min_size_test 512
+
 """
 import time
 import json
@@ -213,12 +217,28 @@ class EarlyStopping:
     def improved(self):
         return self.counter == 0
 
+    def state_dict(self):
+        return {
+            'patience': self.patience,
+            'delta': self.delta,
+            'best_loss': self.best_loss,
+            'counter': self.counter,
+            'stop': self.stop,
+        }
+
+    def load_state_dict(self, state):
+        self.patience = state.get('patience', self.patience)
+        self.delta = state.get('delta', self.delta)
+        self.best_loss = state.get('best_loss', self.best_loss)
+        self.counter = state.get('counter', self.counter)
+        self.stop = state.get('stop', self.stop)
+
 
 # ─────────────────────────────────────────────
 # Checkpoint saving
 # ─────────────────────────────────────────────
 def save_checkpoint(output_dir, model_without_ddp, optimizer, lr_scheduler,
-                    epoch, args, save_full=False, is_best=False):
+                    epoch, args, save_full=False, is_best=False, early_stopping=None):
     """
     Saves:
     - checkpoint.pth          : latest checkpoint (overwritten every epoch)
@@ -233,6 +253,8 @@ def save_checkpoint(output_dir, model_without_ddp, optimizer, lr_scheduler,
         'epoch':        epoch,
         'args':         args,
     }
+    if early_stopping is not None:
+        checkpoint['early_stopping'] = early_stopping.state_dict()
 
     utils.save_on_master(checkpoint, output_dir / 'checkpoint.pth')
 
@@ -355,6 +377,7 @@ def main(args):
 
     # ── Resume ──────────────────────────────────────────────────────────
     output_dir = Path(args.output_dir)
+    resumed_early_stopping_state = None
     if args.resume:
         if args.resume.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
@@ -374,6 +397,8 @@ def main(args):
                 lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
             print(f"Resumed from epoch {args.start_epoch}")
+            if 'early_stopping' in checkpoint:
+                resumed_early_stopping_state = checkpoint['early_stopping']
 
         if args.force_lr:
             for param_group in optimizer.param_groups:
@@ -410,6 +435,13 @@ def main(args):
         patience = args.early_stop_patience,
         delta    = args.early_stop_delta,
     ) if args.early_stop else None
+    if early_stopping is not None and resumed_early_stopping_state is not None:
+        early_stopping.load_state_dict(resumed_early_stopping_state)
+        print(
+            "Resumed early stopping state: "
+            f"best_loss={early_stopping.best_loss}, "
+            f"counter={early_stopping.counter}/{early_stopping.patience}"
+        )
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -446,6 +478,7 @@ def main(args):
                 epoch, args,
                 save_full = save_full,
                 is_best   = is_best,
+                early_stopping = early_stopping,
             )
 
         # ── Log ─────────────────────────────────────────────────────────
