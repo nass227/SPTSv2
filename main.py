@@ -34,7 +34,7 @@ import datasets
 import util.misc_sptsv2 as utils
 from util.data import process_args
 from datasets import build_dataset
-from engine_sptsv2 import evaluate, train_one_epoch
+from engine_sptsv2 import evaluate, train_one_epoch, validate_loss
 from models import build_model
 
 
@@ -63,6 +63,14 @@ def get_args_parser():
                         help='Epochs without improvement before stopping')
     parser.add_argument('--early_stop_delta',    default=1e-4, type=float,
                         help='Minimum improvement considered significant')
+
+    # ── Validation split ─────────────────────────────────────────────────
+    parser.add_argument('--val_split', default=0.0, type=float,
+                        help='Fraction of training data held out as a validation split '
+                             '(e.g. 0.1 = 10%%). When > 0 the early-stopping signal '
+                             'and logged val_loss come from this split instead of the '
+                             'training loss. The existing --val_dataset is unaffected '
+                             'and is still used for the standalone --eval mode.')
 
     # ── Mixed precision ─────────────────────────────────────────────────
     parser.add_argument('--amp', action='store_true',
@@ -342,6 +350,27 @@ def main(args):
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val   = build_dataset(image_set='val',   args=args)
 
+    # ── Optional validation split carved out of training data ───────────
+    # When --val_split > 0 a fixed-seed random subset of the training data
+    # is held out.  The split inherits the training transforms (random
+    # augmentation), which adds some variance to the val loss but keeps the
+    # pipeline identical to training and requires no extra annotation files.
+    # The existing --val_dataset / data_loader_val is left untouched and
+    # continues to be used in standalone --eval mode.
+    dataset_val_loss = None
+    if args.val_split > 0.0:
+        n_total = len(dataset_train)
+        n_val   = max(1, int(n_total * args.val_split))
+        n_train = n_total - n_val
+        g = torch.Generator().manual_seed(args.seed)
+        dataset_train, dataset_val_loss = torch.utils.data.random_split(
+            dataset_train, [n_train, n_val], generator=g
+        )
+        print(
+            f"Val split: {n_val}/{n_total} samples held out for validation loss "
+            f"({args.val_split*100:.1f}%), {n_train} remain for training."
+        )
+
     if args.distributed:
         sampler_train = DistributedSampler(dataset_train)
         sampler_val   = DistributedSampler(dataset_val, shuffle=False) \
@@ -369,6 +398,15 @@ def main(args):
         collate_fn  = utils.collate_fn(args),
         num_workers = args.num_workers,
     ) if dataset_val is not None else None
+
+    data_loader_val_loss = DataLoader(
+        dataset_val_loss,
+        batch_size  = args.batch_size,
+        sampler     = torch.utils.data.SequentialSampler(dataset_val_loss),
+        drop_last   = False,
+        collate_fn  = utils.collate_fn(args),
+        num_workers = args.num_workers,
+    ) if dataset_val_loss is not None else None
 
     # ── Poids figés ─────────────────────────────────────────────────────
     if args.frozen_weights is not None:
@@ -459,7 +497,21 @@ def main(args):
         )
         lr_scheduler.step()
 
-        current_loss = train_stats['loss']
+        # ── Validation loss (teacher-forcing, no grad) ───────────────────
+        val_stats = None
+        if data_loader_val_loss is not None:
+            val_stats = validate_loss(
+                model, criterion,
+                data_loader_val_loss, device,
+                epoch, args.max_length,
+            )
+
+        # Early stopping monitors val loss when a split is active,
+        # otherwise falls back to training loss.
+        current_loss = (
+            val_stats['loss'] if val_stats is not None
+            else train_stats['loss']
+        )
 
         # ── Early stopping check ─────────────────────────────────────────
         if early_stopping is not None:
@@ -484,6 +536,8 @@ def main(args):
         # ── Log ─────────────────────────────────────────────────────────
         log_stats = {
             **{f'train_{k}': v for k, v in train_stats.items()},
+            **(  {f'val_{k}': v for k, v in val_stats.items()}
+                 if val_stats is not None else {}),
             'epoch':        epoch,
             'n_parameters': n_parameters,
         }

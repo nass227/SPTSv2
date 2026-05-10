@@ -337,9 +337,7 @@ def evaluate_complete(
     all_cer, all_wer                  = [], []
     all_predictions, all_gts          = [], []
     all_map_aps                       = []
-    vis_count        = 0
-    total_preds      = 0
-    total_hashtag    = 0
+    vis_count = 0
 
     print("Évaluation en cours...")
 
@@ -394,16 +392,6 @@ def evaluate_complete(
                         category_start_index=category_start_index,
                         text_length=text_length,
                         gt_polys=gt_polys,
-                    )
-
-                # ── # character count ────────────────────────────────────
-                n_hash = sum(1 for t in pred_texts if "#" in t)
-                total_preds   += len(pred_texts)
-                total_hashtag += n_hash
-                if n_hash > 0:
-                    print(
-                        f"[batch {batch_idx:04d} img {i}] "
-                        f"{n_hash}/{len(pred_texts)} predictions contain '#'"
                     )
 
                 # ── Métriques localisation ───────────────────────────────
@@ -500,19 +488,9 @@ def evaluate_complete(
         "WER"               : float(np.mean(all_wer))
                                if all_wer else 0.0,
         "Word Accuracy"     : compute_word_accuracy(all_predictions, all_gts),
-        "Predictions with '#'" : total_hashtag,
-        "Predictions with '#' %" : round(100.0 * total_hashtag / max(total_preds, 1), 4),
-        "Total predictions" : total_preds,
     }
 
     print(f"\n{vis_count} images sauvegardées dans : {vis_dir}")
-
-    hashtag_pct = 100.0 * total_hashtag / max(total_preds, 1)
-    print(
-        f"\nPredictions containing '#' : {total_hashtag} / {total_preds} total"
-        f"  ({hashtag_pct:.2f}%)"
-    )
-
     return results
 
 
@@ -537,10 +515,6 @@ def save_results(results, output_dir):
             print(f"{metric:25s}: {value:.2f}%")
         elif metric in ("CER", "WER"):
             print(f"{metric:25s}: {value:.4f}")
-        elif metric in ("Predictions with '#'", "Total predictions"):
-            print(f"{metric:25s}: {int(value)}")
-        elif metric == "Predictions with '#' %":
-            print(f"{metric:25s}: {value:.2f}%")
         else:
             print(f"{metric:25s}: {value:.2%}")
     print("=" * 55)
@@ -548,14 +522,11 @@ def save_results(results, output_dir):
     create_visualization(results, output_dir)
 
 
-_CHART_SKIP = {"Distance moyenne", "Predictions with '#'",
-               "Predictions with '#' %", "Total predictions"}
-
 def create_visualization(results, output_dir):
-    # only plot normalised 0-100 % metrics; skip raw counts and distances
+    # séparer métriques affichables en %
     plot_metrics = {
         k: v for k, v in results.items()
-        if k not in _CHART_SKIP
+        if k != "Distance moyenne"
     }
     metrics     = list(plot_metrics.keys())
     values_norm = []
