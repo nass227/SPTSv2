@@ -151,18 +151,15 @@ def validate_loss(model: torch.nn.Module, criterion: torch.nn.Module,
     Compute teacher-forcing cross-entropy loss on the validation split,
     without any gradient computation or parameter updates.
 
-    The backbone stays in eval; the inner ``transformer`` is temporarily put
-    in train mode for the forward only. ``Transformer.forward`` in
-    ``encoder_decoder.py`` branches on ``self.training``: in eval it runs
-    autoregressive decoding (greedy loop), which is not what this loss expects
-    and can trigger CUDA index-out-of-bounds in embeddings when the grown
-    sequence exceeds position-table length. The training branch matches
-    ``train_one_epoch`` (single teacher-forcing pass).
+    The full model is put in ``train()`` for these forwards (same as
+    ``train_one_epoch``): both ``SPTSv2.forward`` and ``Transformer.forward``
+    branch on ``self.training``. In eval mode the transformer runs autoregressive
+    inference (CUDA gather issues) while ``SPTSv2`` still expects inference-shaped
+    tensors, causing shape errors. Teacher-forcing loss requires the training
+    path on the whole module tree. Prior train/eval state is restored on exit.
     """
-    model.eval()
-    criterion.eval()
-    core = model.module if hasattr(model, "module") else model
-    core.transformer.train(True)
+    prev_training = model.training
+    model.train()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = f'Val Epoch: [{epoch}]'
@@ -204,8 +201,7 @@ def validate_loss(model: torch.nn.Module, criterion: torch.nn.Module,
             metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
 
     finally:
-        # Align with root module (eval after model.eval() above).
-        core.transformer.train(core.training)
+        model.train(prev_training)
 
     metric_logger.synchronize_between_processes()
     print("Val stats:", metric_logger)
