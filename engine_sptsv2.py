@@ -150,47 +150,62 @@ def validate_loss(model: torch.nn.Module, criterion: torch.nn.Module,
     """
     Compute teacher-forcing cross-entropy loss on the validation split,
     without any gradient computation or parameter updates.
-    Mirrors train_one_epoch but with model.eval() and no backward pass.
+
+    The backbone stays in eval; the inner ``transformer`` is temporarily put
+    in train mode for the forward only. ``Transformer.forward`` in
+    ``encoder_decoder.py`` branches on ``self.training``: in eval it runs
+    autoregressive decoding (greedy loop), which is not what this loss expects
+    and can trigger CUDA index-out-of-bounds in embeddings when the grown
+    sequence exceeds position-table length. The training branch matches
+    ``train_one_epoch`` (single teacher-forcing pass).
     """
     model.eval()
     criterion.eval()
+    core = model.module if hasattr(model, "module") else model
+    core.transformer.train(True)
+
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = f'Val Epoch: [{epoch}]'
 
-    for samples, input_box_seqs, input_label_seqs, output_box_seqs, output_label_seqs in \
-            metric_logger.log_every(data_loader, 10, header):
+    try:
+        for samples, input_box_seqs, input_label_seqs, output_box_seqs, output_label_seqs in \
+                metric_logger.log_every(data_loader, 10, header):
 
-        samples           = samples.to(device)
-        input_box_seqs    = input_box_seqs.to(device)
-        input_label_seqs  = input_label_seqs.to(device)
-        output_box_seqs   = output_box_seqs.to(device)
-        output_label_seqs = output_label_seqs.to(device)
+            samples           = samples.to(device)
+            input_box_seqs    = input_box_seqs.to(device)
+            input_label_seqs  = input_label_seqs.to(device)
+            output_box_seqs   = output_box_seqs.to(device)
+            output_label_seqs = output_label_seqs.to(device)
 
-        if not all(input_label_seqs.tolist()):
-            continue
+            if not all(input_label_seqs.tolist()):
+                continue
 
-        output_seqs = torch.cat([output_box_seqs.flatten(), output_label_seqs.flatten()])
+            output_seqs = torch.cat([output_box_seqs.flatten(), output_label_seqs.flatten()])
 
-        outputs_box, outputs_label = model(samples, input_box_seqs, input_label_seqs, text_length)
-        outputs_box   = outputs_box.reshape(-1, outputs_box.shape[-1])
-        outputs_label = outputs_label.reshape(-1, outputs_label.shape[-1])
-        outputs       = torch.cat([outputs_box, outputs_label], 0)
-        loss          = criterion(outputs, output_seqs.flatten())
+            outputs_box, outputs_label = model(samples, input_box_seqs, input_label_seqs, text_length)
+            outputs_box   = outputs_box.reshape(-1, outputs_box.shape[-1])
+            outputs_label = outputs_label.reshape(-1, outputs_label.shape[-1])
+            outputs       = torch.cat([outputs_box, outputs_label], 0)
+            loss          = criterion(outputs, output_seqs.flatten())
 
-        loss_dict   = {'at': loss}
-        weight_dict = {'at': 1}
+            loss_dict   = {'at': loss}
+            weight_dict = {'at': 1}
 
-        loss_dict_reduced          = utils.reduce_dict(loss_dict)
-        loss_dict_reduced_unscaled = {f'{k}_unscaled': v for k, v in loss_dict_reduced.items()}
-        loss_dict_reduced_scaled   = {k: v * weight_dict[k]
-                                      for k, v in loss_dict_reduced.items() if k in weight_dict}
-        losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
-        loss_value = losses_reduced_scaled.item()
+            loss_dict_reduced          = utils.reduce_dict(loss_dict)
+            loss_dict_reduced_unscaled = {f'{k}_unscaled': v for k, v in loss_dict_reduced.items()}
+            loss_dict_reduced_scaled   = {k: v * weight_dict[k]
+                                          for k, v in loss_dict_reduced.items() if k in weight_dict}
+            losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
+            loss_value = losses_reduced_scaled.item()
 
-        if not math.isfinite(loss_value):
-            continue
+            if not math.isfinite(loss_value):
+                continue
 
-        metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
+            metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
+
+    finally:
+        # Align with root module (eval after model.eval() above).
+        core.transformer.train(core.training)
 
     metric_logger.synchronize_between_processes()
     print("Val stats:", metric_logger)
