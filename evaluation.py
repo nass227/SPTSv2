@@ -237,13 +237,31 @@ def extract_all_pred(out_tensor, chars, img_w, img_h,
 # Image utils
 # ─────────────────────────────────────────────
 
-def tensor_to_image(tensor):
+def tensor_to_image(tensor, mask=None):
+    """Denormalize tensor; crop to valid (non-padded) region when mask is given."""
     mean = np.array([0.485, 0.456, 0.406])
     std  = np.array([0.229, 0.224, 0.225])
     img  = tensor.cpu().numpy().transpose(1, 2, 0)
     img  = img * std + mean
     img  = np.clip(img * 255, 0, 255).astype(np.uint8)
+
+    if mask is not None:
+        valid = (~mask.cpu().numpy())
+        if valid.any():
+            rows = np.where(valid.any(axis=1))[0]
+            cols = np.where(valid.any(axis=0))[0]
+            img = img[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
     return img
+
+
+def get_eval_image_size(target, fallback=640):
+    """
+    Pixel dimensions that match normalized bezier_pts (post-resize, pre-batch-pad).
+    Same coordinate space as training (center_pts * bins).
+    """
+    if "size" in target and isinstance(target["size"], torch.Tensor):
+        return float(target["size"][0]), float(target["size"][1])
+    return float(fallback), float(fallback)
 
 
 # ─────────────────────────────────────────────
@@ -376,16 +394,8 @@ def evaluate_complete(
 
             for i, target in enumerate(targets):
 
-                # ── taille réelle (orig_size, same as engine_sptsv2.evaluate) ─
-                if "orig_size" in target and isinstance(target["orig_size"], torch.Tensor):
-                    img_h_real = float(target["orig_size"][0])
-                    img_w_real = float(target["orig_size"][1])
-                elif "size" in target and isinstance(target["size"], torch.Tensor):
-                    img_h_real = float(target["size"][0])
-                    img_w_real = float(target["size"][1])
-                else:
-                    img_h_real = img_size
-                    img_w_real = img_size
+                # Resized image size (bezier_pts are normalized to this in Normalize)
+                img_h_real, img_w_real = get_eval_image_size(target, fallback=img_size)
 
                 out_i = out_tensor[i]
 
@@ -465,7 +475,8 @@ def evaluate_complete(
                 # ── Visualisation ────────────────────────────────────────
                 if vis_count < max_vis:
                     try:
-                        img_np    = tensor_to_image(samples.tensors[i])
+                        mask_i = samples.mask[i] if samples.mask is not None else None
+                        img_np = tensor_to_image(samples.tensors[i], mask_i)
                         save_path = os.path.join(
                             vis_dir, f"sample_{batch_idx:04d}_{i}.png"
                         )
