@@ -611,10 +611,10 @@ if __name__ == "__main__":
     # Same CLI as main.py (incl. --max_size_test / --min_size_test, lines 116-117)
     parser = get_args_parser()
     parser.prog = "SPTSv2-ResNet evaluation"
+    parser.set_defaults(output_dir="./evaluation_results")
 
-    # ── Eval-only ────────────────────────────────────────────────────────
+    # ── Eval-only (do not re-add flags already in get_args_parser) ─────────
     parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--output_dir", type=str, default="./evaluation_results")
     parser.add_argument("--max_vis", type=int, default=20)
     parser.add_argument("--img_size", type=int, default=None,
                         help="Fallback image size when target has no orig_size "
