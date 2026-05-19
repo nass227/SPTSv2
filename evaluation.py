@@ -107,11 +107,11 @@ def compute_map_center(pred_centers, gt_polys):
 # Extraction GT
 # ─────────────────────────────────────────────
 
-def extract_all_gt(target, chars, img_w, img_h):
+def extract_all_gt(target, chars, img_w, img_h, pad_rec_index=96, no_known_char=95):
     """
     Extrait tous les polygones et textes GT.
     bezier_pts : (N, 16) → 8 points normalisés 0-1
-    rec        : (N, 25) → indices caractères, 128=padding
+    rec        : (N, 25) → indices caractères (same decoding as convert_rec_to_str)
     """
     polygons = []
     texts    = []
@@ -139,7 +139,9 @@ def extract_all_gt(target, chars, img_w, img_h):
             indices = rec[k]
             txt = "".join(
                 chars[int(i)] for i in indices
-                if 0 <= int(i) < len(chars) and int(i) != 128
+                if 0 <= int(i) < len(chars)
+                and int(i) != pad_rec_index
+                and int(i) != no_known_char
             )
             texts.append(txt.strip())
         else:
@@ -166,7 +168,8 @@ def estimate_box_size(gt_polys):
 
 
 def extract_all_pred(out_tensor, chars, img_w, img_h,
-                     bins=1000, category_start_index=1000,
+                     bins=1000, padding_bins=0,
+                     category_start_index=1000,
                      text_length=25, gt_polys=None):
     """
     Decode predictions from the ResNet SPTSv2 output tensor.
@@ -197,6 +200,9 @@ def extract_all_pred(out_tensor, chars, img_w, img_h,
         x_bin = seq[s]
         y_bin = seq[s + 1]
 
+        # Same coordinate decode as util/visualize.py (padding_bins from main.py)
+        x_bin = min(max(x_bin, 0), category_start_index - 1) - padding_bins
+        y_bin = min(max(y_bin, 0), category_start_index - 1) - padding_bins
         cx = x_bin / bins * img_w
         cy = y_bin / bins * img_h
 
@@ -322,8 +328,9 @@ def save_visualization(image_np, pred_centers, pred_polygons, pred_texts,
 
 def evaluate_complete(
     model, data_loader, device, chars, start_index,
-    output_dir, bins=1000, category_start_index=1000,
-    text_length=25, img_size=640, max_vis=20,
+    output_dir, bins=1000, padding_bins=0,
+    category_start_index=1000, text_length=25,
+    img_size=640, max_vis=20, pad_rec_index=96, no_known_char=95,
 ):
     model.eval()
     chars = list(chars)
@@ -369,8 +376,11 @@ def evaluate_complete(
 
             for i, target in enumerate(targets):
 
-                # ── taille réelle ────────────────────────────────────────
-                if "size" in target and isinstance(target["size"], torch.Tensor):
+                # ── taille réelle (orig_size, same as engine_sptsv2.evaluate) ─
+                if "orig_size" in target and isinstance(target["orig_size"], torch.Tensor):
+                    img_h_real = float(target["orig_size"][0])
+                    img_w_real = float(target["orig_size"][1])
+                elif "size" in target and isinstance(target["size"], torch.Tensor):
                     img_h_real = float(target["size"][0])
                     img_w_real = float(target["size"][1])
                 else:
@@ -381,7 +391,9 @@ def evaluate_complete(
 
                 # ── GT ───────────────────────────────────────────────────
                 gt_polys, gt_texts = extract_all_gt(
-                    target, chars, img_w_real, img_h_real
+                    target, chars, img_w_real, img_h_real,
+                    pad_rec_index=pad_rec_index,
+                    no_known_char=no_known_char,
                 )
 
                 # ── Prédictions ──────────────────────────────────────────
@@ -389,6 +401,7 @@ def evaluate_complete(
                     extract_all_pred(
                         out_i, chars, img_w_real, img_h_real,
                         bins=bins,
+                        padding_bins=padding_bins,
                         category_start_index=category_start_index,
                         text_length=text_length,
                         gt_polys=gt_polys,
@@ -560,115 +573,80 @@ def create_visualization(results, output_dir):
 
 
 # ─────────────────────────────────────────────
+# Align eval args with training (main.py / checkpoint)
+# ─────────────────────────────────────────────
+
+_TRAIN_ARG_KEYS = (
+    'pad_rec', 'padding_bins', 'bins', 'chars', 'max_length',
+    'pad_rec_index', 'no_known_char', 'pre_norm', 'backbone',
+    'enc_layers', 'dec_layers', 'window_size', 'obj_num', 'num_box',
+    'dim_feedforward', 'hidden_dim', 'dropout', 'depths', 'nheads',
+    'num_queries', 'transformer_type', 'dilation', 'position_embedding',
+    'pts_key', 'max_size_test', 'min_size_test',
+)
+
+
+def merge_checkpoint_args(args, checkpoint):
+    """Restore training-time token/index and model args from a checkpoint."""
+    if not isinstance(checkpoint, dict) or 'args' not in checkpoint:
+        return args
+    ckpt_args = checkpoint['args']
+    if hasattr(ckpt_args, '__dict__'):
+        ckpt_args = vars(ckpt_args)
+    for key in _TRAIN_ARG_KEYS:
+        if key in ckpt_args:
+            setattr(args, key, ckpt_args[key])
+    return args
+
+
+# ─────────────────────────────────────────────
 # Point d'entrée
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import argparse
+    from pathlib import Path
     from models import build_model
+    from main import get_args_parser
 
-    parser = argparse.ArgumentParser("SPTSv2-ResNet evaluation")
+    # Same CLI as main.py (incl. --max_size_test / --min_size_test, lines 116-117)
+    parser = get_args_parser()
+    parser.prog = "SPTSv2-ResNet evaluation"
 
-    # ── Paths ───────────────────────────────────────────────────────────
-    parser.add_argument("--checkpoint",      type=str, required=True)
-    parser.add_argument("--output_dir",      type=str, default="./evaluation_results")
-    parser.add_argument("--val_dataset",     type=str, required=True)
-    parser.add_argument("--data_root",       type=str, required=True)
-    parser.add_argument("--dataset_file",    type=str, default="ocr")
-
-    # ── Runtime ─────────────────────────────────────────────────────────
-    parser.add_argument("--device",          type=str,
-                        default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--max_vis",         type=int,   default=20)
-    parser.add_argument("--img_size",        type=int,   default=640,
-                        help="Fallback image size when target has no 'size' field")
-
-    # ── ResNet backbone ─────────────────────────────────────────────────
-    parser.add_argument("--backbone",        type=str,   default="resnet50",
-                        help="Backbone name (must match checkpoint)")
-    parser.add_argument("--dilation",        action="store_true",
-                        help="Replace last ResNet stride with dilation (DC5)")
-    parser.add_argument("--position_embedding", type=str, default="sine",
-                        choices=["sine", "learned"])
-    parser.add_argument("--lr_backbone",     type=float, default=0)
-
-    # ── Transformer ─────────────────────────────────────────────────────
-    parser.add_argument("--hidden_dim",      type=int,   default=256)
-    parser.add_argument("--dropout",         type=float, default=0.1)
-    parser.add_argument("--nheads",          type=int,   default=8)
-    parser.add_argument("--window_size",     type=int,   default=5)
-    parser.add_argument("--enc_layers",      type=int,   default=6)
-    parser.add_argument("--dec_layers",      type=int,   default=6)
-    parser.add_argument("--obj_num",         type=int,   default=60)
-    parser.add_argument("--dim_feedforward", type=int,   default=1024)
-    parser.add_argument("--depths",          type=int,   default=6)
-    parser.add_argument("--num_queries",     type=int,   default=100)
-    parser.add_argument("--pre_norm",        action="store_true")
-    parser.add_argument("--transformer_type",type=str,   default="vanilla",
-                        choices=["vanilla", "linear"])
-    parser.add_argument("--masks",           action="store_true")
-
-    # ── Vocabulary ──────────────────────────────────────────────────────
-    parser.add_argument("--bins",            type=int,   default=1000)
-    parser.add_argument("--chars",           type=str,
-                        default='!"#$%&\'()*+,-./0123456789:;<=>?@'
-                                'ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`'
-                                'abcdefghijklmnopqrstuvwxyz{|}~'
-                                '\u00e0\u00e2\u00e4\u00e9\u00e8\u00ea\u00eb'
-                                '\u00ee\u00ef\u00f4\u00f9\u00fb\u00fc\u00ff'
-                                '\u00e6\u0153\u00e7'
-                                '\u00c0\u00c2\u00c4\u00c9\u00c8\u00ca\u00cb'
-                                '\u00ce\u00cf\u00d4\u00d9\u00db\u00dc\u0178'
-                                '\u00c6\u0152\u00c7')
-    parser.add_argument("--padding_bins",    type=int,   default=0)
-    parser.add_argument("--num_box",         type=int,   default=60)
-    parser.add_argument("--pts_key",         type=str,   default="center_pts")
-    parser.add_argument("--no_known_char",   type=int,   default=130)
-    parser.add_argument("--pad_rec_index",   type=int,   default=128)
-    parser.add_argument("--pad_rec",         action="store_true")
-    parser.add_argument("--dict_name",       type=str,   default="en_US.dic")
-    parser.add_argument("--use_dict",        action="store_true")
-    parser.add_argument("--max_length",      type=int,   default=25)
-
-    # ── Data augmentation (needed by build_dataset) ──────────────────────
-    parser.add_argument("--max_size_train",  type=int,   default=1600)
-    parser.add_argument("--min_size_train",  type=int,   nargs="+",
-                        default=[640, 672, 704, 736, 768, 800, 832, 864, 896])
-    parser.add_argument("--max_size_test",   type=int,   default=1824)
-    parser.add_argument("--min_size_test",   type=int,   default=1024)
-    parser.add_argument("--crop_min_ratio",  type=float, default=0.5)
-    parser.add_argument("--crop_max_ratio",  type=float, default=1.0)
-    parser.add_argument("--crop_prob",       type=float, default=1.0)
-    parser.add_argument("--rotate_max_angle",type=int,   default=30)
-    parser.add_argument("--rotate_prob",     type=float, default=0.3)
-    parser.add_argument("--brightness",      type=float, default=0.5)
-    parser.add_argument("--contrast",        type=float, default=0.5)
-    parser.add_argument("--saturation",      type=float, default=0.5)
-    parser.add_argument("--hue",             type=float, default=0.5)
-    parser.add_argument("--distortion_prob", type=float, default=0.5)
-    parser.add_argument("--remove_difficult",action="store_true")
-
-    # ── Mode flags (required by build_dataset / collate_fn) ─────────────
-    parser.add_argument("--train",           action="store_true")
-    parser.add_argument("--eval",            action="store_true")
-    parser.add_argument("--finetune",        action="store_true")
-    parser.add_argument("--visualize",       action="store_true")
+    # ── Eval-only ────────────────────────────────────────────────────────
+    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--output_dir", type=str, default="./evaluation_results")
+    parser.add_argument("--max_vis", type=int, default=20)
+    parser.add_argument("--img_size", type=int, default=None,
+                        help="Fallback image size when target has no orig_size "
+                             "(defaults to --min_size_test)")
 
     args = parser.parse_args()
 
-    # pad_rec must be True — matches training config (see main.py)
-    args.pad_rec = True
-    args = process_args(args)
-
-    print(f"Token indices: category_start={args.category_start_index}, "
-          f"end={args.end_index}, start={args.start_index}")
-
-    # ── Build model ─────────────────────────────────────────────────────
-    model, _ = build_model(args)
+    if not args.val_dataset or not args.data_root:
+        parser.error("--val_dataset and --data_root are required for evaluation")
 
     print(f"Chargement : {args.checkpoint}")
     checkpoint = torch.load(args.checkpoint, map_location="cpu",
                             weights_only=False)
+
+    # Match padding / indexes / model config to the training run when possible
+    merge_checkpoint_args(args, checkpoint)
+
+    # Same index computation as main.py (process_args in util/data.py)
+    args = process_args(args)
+
+    if args.img_size is None:
+        args.img_size = args.min_size_test
+
+    print(f"Test resize: max_size_test={args.max_size_test}, "
+          f"min_size_test={args.min_size_test}")
+    print(f"Token indices: category_start={args.category_start_index}, "
+          f"end={args.end_index}, start={args.start_index}, "
+          f"padding_bins={args.padding_bins}, pad_rec={args.pad_rec}, "
+          f"pad_rec_index={args.pad_rec_index}, no_known_char={args.no_known_char}")
+
+    # ── Build model ─────────────────────────────────────────────────────
+    model, _ = build_model(args)
 
     if isinstance(checkpoint, dict) and "model" in checkpoint:
         model.load_state_dict(checkpoint["model"])
@@ -691,6 +669,8 @@ if __name__ == "__main__":
     )
 
     # ── Évaluation ──────────────────────────────────────────────────────
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
     results = evaluate_complete(
         model                = model,
         data_loader          = data_loader,
@@ -699,10 +679,13 @@ if __name__ == "__main__":
         start_index          = args.start_index,
         output_dir           = args.output_dir,
         bins                 = args.bins,
+        padding_bins         = args.padding_bins,
         category_start_index = args.category_start_index,
         text_length          = args.max_length,
         img_size             = args.img_size,
         max_vis              = args.max_vis,
+        pad_rec_index        = args.pad_rec_index,
+        no_known_char        = args.no_known_char,
     )
 
     save_results(results, args.output_dir)
