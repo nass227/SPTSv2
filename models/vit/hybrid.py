@@ -37,12 +37,12 @@ class HybridBackbone(nn.Module):
         ckpt_r = torch.load(resnet_ckpt, map_location="cpu", weights_only=False)
         state_r = ckpt_r["model"]
 
-        # Dans le checkpoint ResNet, le backbone est sauvegardé sous
-        # backbone.body.<nom_layer> (Joiner → BackboneBase.body).
+        # Dans le checkpoint ResNet, Joiner est nn.Sequential → index 0 est
+        # BackboneBase, donc les clés sont backbone.0.body.<nom_layer>.
         cnn_w = {
-            k[len("backbone.body."):]: v
+            k[len("backbone.0.body."):]: v
             for k, v in state_r.items()
-            if k.startswith("backbone.body.")
+            if k.startswith("backbone.0.body.")
         }
         missing, unexpected = resnet.load_state_dict(cnn_w, strict=False)
         print(f"[HybridBackbone] ResNet18 : {len(cnn_w)} clés chargées  "
