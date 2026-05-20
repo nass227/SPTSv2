@@ -99,6 +99,10 @@ def get_args_parser():
                         help="Ne pas geler le backbone au départ "
                              "(tout entraîner depuis le début)")
 
+    # ── Mixed precision ──────────────────────────────────────────────────
+    parser.add_argument("--amp", action="store_true",
+                        help="Enable automatic mixed precision (FP16) training")
+
     # ── Optimisation ────────────────────────────────────────────────────
     parser.add_argument("--lr",            default=1e-4,  type=float)
     parser.add_argument("--lr_backbone",   default=1e-5,  type=float)
@@ -270,12 +274,13 @@ class EarlyStopping:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def save_checkpoint(output_dir, model_without_ddp, optimizer, epoch, args,
-                    save_full=False, is_best=False):
+                    save_full=False, is_best=False, scaler=None):
     checkpoint = {
         "model":     model_without_ddp.state_dict(),
         "optimizer": optimizer.state_dict(),
         "epoch":     epoch,
         "args":      args,
+        "scaler":    scaler.state_dict() if scaler is not None else None,
     }
     utils.save_on_master(checkpoint, output_dir / "checkpoint.pth")
     if save_full:
@@ -295,28 +300,24 @@ def save_checkpoint(output_dir, model_without_ddp, optimizer, epoch, args,
 
 def build_optimizer(model_without_ddp, args):
     """
-    3 groupes de paramètres :
-      - decoder / transformer / heads  → lr principal
-      - backbone.proj_cnn / proj_vit   → lr intermédiaire (toujours entraînés)
-      - backbone.cnn / backbone.vit    → lr_backbone (peut être 0 si gelés)
+    Exactement 2 groupes de paramètres (requis par train_one_epoch dans engine_sptsv2.py
+    qui hardcode param_groups[0] et param_groups[1]) :
+      - groupe 0 : non-backbone (decoder, heads, proj_cnn, proj_vit)  → lr principal
+      - groupe 1 : backbone CNN + ViT bruts                           → lr_backbone
+        (vide en phase 1 car gelés, AdamW gère les groupes vides)
     """
-    backbone_proj_params = [
+    non_backbone_params = [
         p for n, p in model_without_ddp.named_parameters()
-        if ("backbone.proj_cnn" in n or "backbone.proj_vit" in n) and p.requires_grad
+        if "backbone.cnn" not in n and "backbone.vit" not in n and p.requires_grad
     ]
-    backbone_frozen_params = [
+    backbone_params = [
         p for n, p in model_without_ddp.named_parameters()
         if ("backbone.cnn" in n or "backbone.vit" in n) and p.requires_grad
     ]
-    other_params = [
-        p for n, p in model_without_ddp.named_parameters()
-        if "backbone" not in n and p.requires_grad
-    ]
 
     param_dicts = [
-        {"params": other_params},
-        {"params": backbone_proj_params, "lr": args.lr_backbone * 5},
-        {"params": backbone_frozen_params, "lr": args.lr_backbone},
+        {"params": non_backbone_params},
+        {"params": backbone_params, "lr": args.lr_backbone},
     ]
     return torch.optim.AdamW(param_dicts, lr=args.lr, weight_decay=args.weight_decay)
 
@@ -353,6 +354,10 @@ def main(args):
         model_without_ddp = model.module
 
     optimizer = build_optimizer(model_without_ddp, args)
+
+    scaler = torch.cuda.amp.GradScaler() if args.amp else None
+    if scaler is not None:
+        print("Mixed precision (AMP) activé.")
 
     # ── Datasets ─────────────────────────────────────────────────────────
     use_val_split = (not args.val_dataset) and (args.val_split > 0)
@@ -416,6 +421,8 @@ def main(args):
             optimizer.load_state_dict(ckpt["optimizer"])
             args.start_epoch = ckpt["epoch"] + 1
             print(f"Reprise depuis epoch {args.start_epoch}")
+        if scaler is not None and ckpt.get("scaler") is not None:
+            scaler.load_state_dict(ckpt["scaler"])
         if args.force_lr:
             for g in optimizer.param_groups:
                 g["lr"] = args.lr
@@ -428,7 +435,7 @@ def main(args):
             return
         evaluate(model, criterion, data_loader_val, device,
                  args.output_dir, args.chars, args.start_index,
-                 args.visualize, args.max_length)
+                 args.category_start_index, args.visualize, args.max_length)
         return
 
     print("Début de l'entraînement")
@@ -458,14 +465,16 @@ def main(args):
                 lr_cnn=args.lr_backbone,
                 lr_vit=args.lr_backbone,
             )
-            # Reconstruire l'optimiseur pour inclure les nouveaux params
+            # Reconstruire l'optimiseur pour inclure les nouveaux params dégelés
             optimizer = build_optimizer(model_without_ddp, args)
+            # AMP scaler survive le rebuild de l'optimiseur sans action
             phase2_started = True
 
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer,
             device, epoch, args.clip_max_norm,
             learning_rate_schedule, args.print_freq, args.max_length,
+            scaler=scaler,
         )
 
         # ── Validation loss ──────────────────────────────────────────────
@@ -492,6 +501,7 @@ def main(args):
                 output_dir, model_without_ddp, optimizer, epoch, args,
                 save_full=((epoch + 1) % 10 == 0),
                 is_best=is_best,
+                scaler=scaler,
             )
 
         log_stats = {
