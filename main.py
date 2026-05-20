@@ -19,6 +19,10 @@ CUDA_VISIBLE_DEVICES=0 nohup python main.py --train_dataset icdarall_train --val
 on colab 
 !python3.10 main.py --train_dataset ICDAR2019_train --val_dataset ICDAR2019_test --data_root  "/content/Data" --lr 5e-4 --lr_backbone 1e-5 --epochs 250 --warmup_epochs 10 --warmup_min_lr 1e-7 --min_lr 1e-5 --batch_size 8 --pre_norm --num_workers 1 --pad_rec --early_stop --early_stop_patience 30 --early_stop_delta 1e-4 --output_dir  "/content/results_new" --train --resume "/content/checkpoint.pth" --amp --max_size_train 640 --min_size_train 320 384 448 512 --max_size_test 768 --min_size_test 512
 
+ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python SPTSv2/main.py  --train  --train_dataset icdarall_train --data_root /workspace/pfefn/icall  --output_dir ./output/resnet --epochs 150 --batch_size 20 --lr 5e-5 --lr_backbone 1e-6 --pad_rec --weight_decay 1e-4 --warmup_epochs 5 --dropout 0.1 --early_stop --early_stop_patience 30 --val_split 0.2  --num_workers 8 --amp > train.log 2>&1 &
+ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python SPTSv2/main.py  --train  --train_dataset icdarall_train --data_root /workspace/pfefn/icall  --output_dir ./output/resnet --epochs 150 --batch_size 20 --lr 5e-5 --lr_backbone 1e-6 --pad_rec --weight_decay 1e-4 --warmup_epochs 5 --dropout 0.1 --early_stop --early_stop_patience 30 --val_split 0.2  --num_workers 8 --amp --resume "/workspace/pfefn/output/resnet/checkpoint.pth"> train2.log 2>&1 &
+ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python SPTSv2/main.py  --train  --train_dataset icdarall_train --data_root /workspace/pfefn/icall  --output_dir ./output/resnet --epochs 150 --batch_size 20 --lr 5e-5 --lr_backbone 1e-6 --lr_drop 120 --pad_rec --weight_decay 1e-4 --warmup_epochs 5 --dropout 0.1 --early_stop --early_stop_patience 30 --val_split 0.2  --num_workers 8 --amp --resume "/workspace/pfefn/output/resnet/checkpoint.pth"> train3.log 2>&1 &
+
 """
 import time
 import json
@@ -65,7 +69,7 @@ def get_args_parser():
                         help='Minimum improvement considered significant')
 
     # ── Validation split ─────────────────────────────────────────────────
-    parser.add_argument('--val_split', default=0.0, type=float,
+    parser.add_argument('--val_split', default=0.2, type=float,
                         help='Fraction of training data held out as a validation split '
                              '(e.g. 0.1 = 10%%). When > 0 the early-stopping signal '
                              'and logged val_loss come from this split instead of the '
@@ -110,11 +114,11 @@ def get_args_parser():
     parser.add_argument('--use_dict',      action='store_true')
 
     # ── Augmentations ───────────────────────────────────────────────────
-    parser.add_argument('--max_size_train',   type=int,   default=1024  )
+    parser.add_argument('--max_size_train',   type=int,   default=800  )
     parser.add_argument('--min_size_train',   type=int,   nargs='+',
-                        default=[512, 640, 672, 704, 736, 768, 800, 832, 864, 896])
-    parser.add_argument('--max_size_test',    type=int,   default=1824)
-    parser.add_argument('--min_size_test',    type=int,   default=1024)
+                        default=[448, 512, 576, 640]) #[512, 640, 672, 704, 736, 768, 800, 832, 864, 896])
+    parser.add_argument('--max_size_test',    type=int,   default=960        )
+    parser.add_argument('--min_size_test',    type=int,   default=640        )
     parser.add_argument('--crop_min_ratio',   type=float, default=0.5)
     parser.add_argument('--crop_max_ratio',   type=float, default=1.0)
     parser.add_argument('--crop_prob',        type=float, default=1.0)
@@ -348,7 +352,7 @@ def main(args):
 
     # ── Datasets ────────────────────────────────────────────────────────
     dataset_train = build_dataset(image_set='train', args=args)
-    dataset_val   = build_dataset(image_set='val',   args=args)
+    dataset_val   = build_dataset(image_set='val', args=args) if args.val_dataset else None
 
     # ── Optional validation split carved out of training data ───────────
     # When --val_split > 0 a fixed-seed random subset of the training data
