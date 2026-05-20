@@ -1,0 +1,47 @@
+SPTS quick evaluation report
+dataset: ICDAR2019_test
+avg_batch_inference_s: 15.1521
+center_match_threshold_px (typical): 24.00
+---
+counts: gt_instances=11371 pred_instances_non_empty=300
+recognition empty strings: 119700 / 120000 (99.75%)
+detection (greedy center match): matched=0
+  recall 0.0000  precision 0.0000  f1 0.0000
+recognition (on matched pairs): exact_acc 0.0000  (0/0)
+localization: mean_L2_px_on_matches 0.00
+---
+sample predictions (raw, first up to 12):
+  img 21 | '!!!!!' | score 0.404 | (858.9, 380.2)
+  img 21 | '!!!!!' | score 0.372 | (861.4, 380.2)
+  img 21 | '!!!!!' | score 0.374 | (861.4, 380.2)
+  img 21 | '!!!!!' | score 0.375 | (861.4, 380.2)
+  img 21 | '!!!!!' | score 0.378 | (861.4, 380.2)
+  img 21 | '!!!!!' | score 0.396 | (858.9, 646.1)
+  img 21 | '!!!!!' | score 0.373 | (861.4, 646.1)
+  img 21 | '!!!!!' | score 0.374 | (861.4, 646.1)
+  img 21 | '!!!!!' | score 0.375 | (861.4, 646.1)
+  img 21 | '!!!!!' | score 0.375 | (861.4, 646.1)
+  img 21 | '!!!!!' | score 0.376 | (861.4, 646.1)
+  img 21 | '!!!!!' | score 0.375 | (861.4, 646.1)
+---
+matched pairs (pred vs GT), up to 20:
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.404 | (858.9, 380.2)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.372 | (861.4, 380.2)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.374 | (861.4, 380.2)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.375 | (861.4, 380.2)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.378 | (861.4, 380.2)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.396 | (858.9, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.373 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.374 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.375 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.375 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.376 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.375 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.375 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.376 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.376 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.504 | (862.7, 973.4)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.376 | (861.4, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.383 | (862.7, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.385 | (862.7, 646.1)
+  img 21 | UNMATCHED pred | '!!!!!' | score 0.384 | (862.7, 646.1)

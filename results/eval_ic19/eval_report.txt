@@ -1,0 +1,82 @@
+============================================================
+  ICDAR2019 Evaluation Report  -  SPTSv2
+============================================================
+checkpoint       : results\finetune_ic19\checkpoint.pth
+test images      : Data/ICDAR2019/test_imgs
+test GT          : Data/ICDAR2019/test_gt
+allowed scripts  : Latin,Symbols,None
+chars (len=95):  !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFG...
+pad_rec          : True
+max_length       : 25
+category_start_index: 1000
+start_index      : 1098
+end_index        : 1097
+
+--- Inference Stats ---
+images processed : 2001
+avg inference (s): 0.9262
+total candidates : 119525
+empty strings    : 114104 (95.5%)
+non-empty kept   : 5421
+GT instances     : 11373
+
+--- Best Result ---
+conf threshold   : 0.300
+precision        : 0.0000
+recall           : 0.0000
+F1 (hmean)       : 0.0000
+true positives   : 0
+detections       : 3498
+GT (non-dontcare): 11373
+
+--- Threshold Sweep ---
+   thr     prec      rec       f1     tp    ndet
+ 0.300   0.0000   0.0000   0.0000      0    3498
+
+--- Sample Predictions (first 20 kept) ---
+  tr_img_02390 | '6' | score 0.701 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.698 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.698 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.698 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.696 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.695 | (2242.6, 1681.9)
+  tr_img_07683 | 'G' | score 0.694 | (4309.9, 2426.5)
+  tr_img_02390 | '6' | score 0.693 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.692 | (2242.6, 1681.9)
+  tr_img_07683 | 'G' | score 0.691 | (4309.9, 2426.5)
+  tr_img_07683 | 'G' | score 0.690 | (4309.9, 2426.5)
+  tr_img_07683 | 'G' | score 0.690 | (4309.9, 2426.5)
+  tr_img_02390 | '6' | score 0.687 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.687 | (2242.6, 1681.9)
+  tr_img_02390 | '6' | score 0.687 | (2242.6, 1681.9)
+  tr_img_07683 | 'G' | score 0.686 | (4309.9, 2426.5)
+  tr_img_07683 | 'G' | score 0.685 | (4309.9, 2426.5)
+  tr_img_07683 | 'G' | score 0.685 | (4309.9, 2426.5)
+  tr_img_07683 | 'G' | score 0.685 | (4309.9, 2426.5)
+  tr_img_02390 | '6' | score 0.682 | (2242.6, 1681.9)
+
+--- Sample GT (first 5 images) ---
+  tr_img_00004 | 'شارع' | (351.2, 145.0) | Arabic [DONTCARE]
+  tr_img_00004 | 'المك' | (282.5, 144.0) | Arabic [DONTCARE]
+  tr_img_00004 | 'نمر' | (214.8, 147.0) | Arabic [DONTCARE]
+  tr_img_00004 | 'aL-MAK' | (221.2, 179.5) | Latin
+  tr_img_00004 | 'NIMIR' | (286.0, 179.0) | Latin
+  tr_img_00007 | 'I' | (98.0, 263.2) | Latin
+  tr_img_00007 | 'I' | (211.0, 262.5) | Latin
+  tr_img_00007 | 'I' | (321.5, 259.2) | Latin
+  tr_img_00007 | 'Suffered' | (154.5, 263.5) | Latin
+  tr_img_00007 | 'Learned' | (266.8, 261.8) | Latin
+  tr_img_00012 | 'خمج' | (659.5, 260.8) | Arabic [DONTCARE]
+  tr_img_00012 | 'الطبي' | (333.0, 289.0) | Arabic [DONTCARE]
+  tr_img_00012 | 'MEDICAL' | (1073.5, 431.2) | Latin
+  tr_img_00012 | 'CLINIC' | (1570.2, 406.8) | Latin
+  tr_img_00012 | 'مستوصف' | (1438.5, 208.0) | Arabic [DONTCARE]
+  tr_img_00039 | 'ُقصْر' | (433.2, 209.2) | Arabic [DONTCARE]
+  tr_img_00039 | 'العَدَالَة' | (184.5, 197.8) | Arabic [DONTCARE]
+  tr_img_00042 | 'Economic' | (433.2, 221.5) | Latin
+  tr_img_00042 | 'Aqaba' | (104.5, 179.0) | Latin
+  tr_img_00042 | '19' | (93.0, 199.0) | Latin
+  tr_img_00042 | 'Km' | (112.5, 198.8) | Latin
+  tr_img_00042 | 'Welcome' | (393.0, 196.2) | Latin
+
+============================================================

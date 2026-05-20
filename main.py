@@ -25,9 +25,9 @@ def get_args_parser():
     parser = argparse.ArgumentParser('Set SPTSv2', add_help=False)
     parser.add_argument('--lr', default=1e-4, type=float)
     parser.add_argument('--lr_backbone', default=1e-5, type=float)
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=4, type=int)# 128 
     parser.add_argument('--weight_decay', default=1e-4, type=float)
-    parser.add_argument('--epochs', default=250, type=int)
+    parser.add_argument('--epochs', default=50, type=int) # og was 250 
     parser.add_argument('--lr_drop', default=200, type=int)
     parser.add_argument('--clip_max_norm', default=0.1, type=float,
                         help='gradient clipping max norm')
@@ -53,7 +53,7 @@ def get_args_parser():
     parser.add_argument('--pad_rec', action='store_true')
     parser.add_argument('--dict_name', type=str, default='en_US.dic')
     parser.add_argument('--use_dict', action='store_true')
-    parser.add_argument('--max_size_train', type=int, default=1600)
+    parser.add_argument('--max_size_train', type=int, default=1600) # 
     parser.add_argument('--min_size_train', type=int, nargs='+', default=[640, 672, 704, 736, 768, 800, 832, 864, 896])
     parser.add_argument('--max_size_test', type=int, default=1824)
     parser.add_argument('--min_size_test', type=int, default=1024)
@@ -83,7 +83,7 @@ def get_args_parser():
                         help="Number of decoding layers in the transformer")
     parser.add_argument('--window_size', default=5, type=int,
                         help="swin transformer window size")
-    parser.add_argument('--obj_num', default=60, type=int,
+    parser.add_argument('--obj_num', default=60, type=int, 
                         help="number of text lines in training stage") 
     parser.add_argument('--max_length', default=25, type=int,
                         help="number of text lines in training stage")                                      
@@ -103,7 +103,7 @@ def get_args_parser():
     parser.add_argument('--transformer_type', type=str, default='vanilla', help='vanilla, linear')
 
     # dataset parameters
-    parser.add_argument('--dataset_file', default='ocr')
+    parser.add_argument('--dataset_file', default='custom_text')
     parser.add_argument('--train_dataset', type=str)
     parser.add_argument('--val_dataset', type=str)
     parser.add_argument('--data_root', type=str)
@@ -133,10 +133,17 @@ def get_args_parser():
 
 def main(args):
     utils.init_distributed_mode(args)
+    args.dataset_file = 'ocr'#or custom_text or 'synth_text' 
+    args.train_dataset = 'ICDAR2019_train'# or custom_train or synthtext_train'
+    args.val_dataset = 'ICDAR2019_test' # or 'synthtext_val
+    args.data_root = r'./Data' # r'../Datasets/'
+
+    args.pad_rec = True # because of vocab error
 
     if args.frozen_weights is not None:
         assert args.masks, "Frozen training is meant for segmentation only"
     args = process_args(args)
+
     print(args)
     device = torch.device(args.device)
 
@@ -154,7 +161,8 @@ def main(args):
         model_without_ddp = model.module
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('number of params:', n_parameters)
-
+    print(f"Using device: {device}")
+    
     param_dicts = [
         {"params": [p for n, p in model_without_ddp.named_parameters() if "backbone" not in n and p.requires_grad]},
         {
@@ -179,24 +187,39 @@ def main(args):
     batch_sampler_train = torch.utils.data.BatchSampler(
         sampler_train, args.batch_size, drop_last=True)
 
+
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
-                                   collate_fn=utils.collate_fn(args), num_workers=args.num_workers)
+                                    collate_fn=utils.collate_fn(args), num_workers=args.num_workers)
     data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
-                                 drop_last=False, collate_fn=utils.collate_fn(args), num_workers=args.num_workers) if not dataset_val is None else None
+                                  drop_last=False, collate_fn=utils.collate_fn(args), num_workers=args.num_workers) if not dataset_val is None else None
 
     if args.frozen_weights is not None:
         checkpoint = torch.load(args.frozen_weights, map_location='cpu')
         model_without_ddp.detr.load_state_dict(checkpoint['model'])
 
     output_dir = Path(args.output_dir)
+    # if args.resume:
+    #     if args.resume.startswith('https'):
+    #         checkpoint = torch.hub.load_state_dict_from_url(
+    #             args.resume, map_location='cpu', check_hash=True)
+    #     else:
+    #         checkpoint = torch.load(args.resume, map_location='cpu')
+    #     model_without_ddp.load_state_dict(checkpoint['model'])
+    #     if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
+    #         optimizer.load_state_dict(checkpoint['optimizer'])
+    #         lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+    #         args.start_epoch = checkpoint['epoch'] + 1
     if args.resume:
+
         if args.resume.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
             checkpoint = torch.load(args.resume, map_location='cpu')
+
         model_without_ddp.load_state_dict(checkpoint['model'])
-        if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
+
+        if (not args.eval) and (not args.finetune) and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
@@ -208,7 +231,7 @@ def main(args):
         evaluate(model, criterion,
                  data_loader_val, device, 
                  args.output_dir, args.chars, 
-                 args.start_index, args.visualize,
+                 args.start_index, args.category_start_index, args.visualize,
                  args.max_length)
         return
 

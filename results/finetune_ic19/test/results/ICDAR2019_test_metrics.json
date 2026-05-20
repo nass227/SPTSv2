@@ -1,0 +1,18 @@
+{
+    "dataset_name": "ICDAR2019_test",
+    "gt_json": "./Data\\ICDAR2019\\test.json",
+    "pred_json": "./results/finetune_ic19/test\\results\\ICDAR2019_test.json",
+    "match_distance_thresh_px": 30.0,
+    "num_gt_instances": 17028,
+    "num_predictions": 106946,
+    "matched_detections": 411,
+    "correct_recognitions": 85,
+    "detection_precision": 0.003843060984048024,
+    "detection_recall": 0.024136715997181115,
+    "detection_hmean": 0.006630422507945214,
+    "recognition_accuracy_on_matched": 0.20681265206812652,
+    "end_to_end_precision": 0.0007947936341705159,
+    "end_to_end_recall": 0.004991778247592201,
+    "end_to_end_hmean": 0.0013712552632003485,
+    "avg_normalized_edit_distance": 0.7931873479318735
+}

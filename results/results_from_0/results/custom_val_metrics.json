@@ -1,0 +1,18 @@
+{
+    "dataset_name": "custom_val",
+    "gt_json": "./Data\\custom\\test.json",
+    "pred_json": "results\\results\\custom_val.json",
+    "match_distance_thresh_px": 30.0,
+    "num_gt_instances": 1095,
+    "num_predictions": 13980,
+    "matched_detections": 21,
+    "correct_recognitions": 0,
+    "detection_precision": 0.0015021459227467812,
+    "detection_recall": 0.019178082191780823,
+    "detection_hmean": 0.0027860696517412937,
+    "recognition_accuracy_on_matched": 0.0,
+    "end_to_end_precision": 0.0,
+    "end_to_end_recall": 0.0,
+    "end_to_end_hmean": 0.0,
+    "avg_normalized_edit_distance": 0.9161169518312375
+}

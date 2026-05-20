@@ -1,0 +1,33 @@
+[{
+    "result_file":"original",
+    "batch_size":128,
+    "max_size_train":1600,
+    "epoch":250,
+    "min_size_train":"[640, 672, 704, 736, 768, 800, 832, 864, 896]"
+     
+},
+{
+    "result_file":"results_from_0",
+    "batch_size":8,
+    "epoch":60,
+    "max_size_train":800,
+    "min_size_train":"[512, 544, 576, 608, 640]"
+     
+},
+ {
+    "result_file":"results_synth",
+    "batch_size":3,
+    "epoch":1,
+    "max_size_train":640,
+    "min_size_train":"[512, 544, 576, 608, 640]"
+     
+},
+{
+    "result_file":"results_finetune",
+    "batch_size":8,
+    "max_size_train":640,
+    "min_size_train":"[512, 544, 576, 608, 640]"
+     
+}
+
+]

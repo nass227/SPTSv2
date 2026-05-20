@@ -66,6 +66,7 @@ def get_args_parser():
     parser.add_argument('--masks', action='store_true',
                         help="Train segmentation head if the flag is provided")
     parser.add_argument('--img_path', default="", type=str, help='path for the image to be detected')
+    parser.add_argument('--conf_threshold', default=0.922, type=float, help='confidence threshold for drawing detections')
     return parser
 
 @torch.no_grad()
@@ -87,10 +88,12 @@ def main(args):
         else:
             checkpoint = torch.load(args.resume, map_location='cpu')
         model.load_state_dict(checkpoint['model'])
+    print("Model loaded successfully!")
     image = Image.open(args.img_path)
     image = image.convert('RGB')
 
     w_ori,h_ori = image.size
+    print(f"Image loaded: {args.img_path}, size: ({w_ori}, {h_ori})")
 
     #transform
     transform = T.Compose([
@@ -105,33 +108,61 @@ def main(args):
     image_new = image_new[0].view(1,c,h,w).to(device)
     seq = torch.ones(1, 1).to(device,dtype=torch.long) * args.start_index
     model.eval()
-
-    # get predictions
-    output = model(image_new,seq,seq, text_length=args.max_length)
+    print(
+        f"Token indices -> category_start_index={args.category_start_index}, "
+        f"end_index={args.end_index}, start_index={args.start_index}"
+    )
+    output = model(image_new, seq, seq, text_length=args.max_length)
+    if output is None:
+        print("No detections found (model returned None, likely N=0).")
+        return
     outputs, values, _ = output
     N = (outputs[0].shape[0])//(args.max_length+2)
+    print(f"Number of potential detections: {N}")
+    print(f"Using conf_threshold={args.conf_threshold:.3f}")
     img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    detections_drawn = 0
     for i in range(N):
         v = values[0][(args.max_length+2)*i:((args.max_length+2))*i+(args.max_length+2)].mean().item()
-        if v > 0.922:
-            text = ''
-            pts_x = outputs[0][(args.max_length+2)*i].item() * (float(w_ori) / 1000)
-            pts_y = outputs[0][(args.max_length+2)*i+1].item() * (float(h_ori) / 1000)
-            for c in outputs[0][(args.max_length+2)*i+2:(args.max_length+2)*i+(args.max_length+2)].tolist():
-                if 1000 < c < 1000 + len(args.chars) + 1:
-                        text += args.chars[c-1000]
-                else:
-                    break
+        pts_x = outputs[0][(args.max_length+2)*i].item() * (float(w_ori) / 1000)
+        pts_y = outputs[0][(args.max_length+2)*i+1].item() * (float(h_ori) / 1000)
+        token_seq = outputs[0][(args.max_length+2)*i+2:(args.max_length+2)*i+(args.max_length+2)].tolist()
+        text = ''
+        for c in token_seq:
+            # Valid recognition chars are [category_start_index, category_start_index + len(chars) - 1].
+            # Stop on any special token (pad/end/unknown/out-of-range).
+            if args.category_start_index <= c < args.category_start_index + len(args.chars):
+                text += args.chars[c - args.category_start_index]
+            else:
+                break
+
+        keep = v >= args.conf_threshold
+        preview_tokens = token_seq[:8]
+        print(
+            f"[cand {i:02d}] conf={v:.4f} keep={keep} "
+            f"xy=({pts_x:.1f},{pts_y:.1f}) text='{text}' tokens={preview_tokens}"
+        )
+        if keep:
             cv2.circle(img, (int(pts_x), int(pts_y)), 3, (255, 0, 0), -1)
             cv2.putText(img, text, (int(pts_x), int(pts_y)), cv2.FONT_HERSHEY_COMPLEX, 0.75, (0, 255, 0), 2)
+            detections_drawn += 1
     
-    cv2.imwrite('test_'+args.img_path.split('/')[-1],img)
+    output_path = f"test_{Path(args.img_path).name}"
+    cv2.imwrite(output_path, img)
+    print(f"Total detections drawn: {detections_drawn}")
+    print(f"Output saved to: {output_path}")
+
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('SPTSv2 yyds', parents=[get_args_parser()])
     args = parser.parse_args()
-    args.img_path = 'IMG/0000245.jpg'
-    args.resume = 'your_weight_path'
+
+    args.img_path = r'C:/Users/WELTINFO/Desktop/Farida/SPTSv2/Data/ICDAR2019/test_imgs/tr_img_06794.jpg'
+    args.resume =  r"C:/Users/WELTINFO/Desktop/Farida/SPTSv2/models/weights/pretrained_model.pth" # r"C:\Users\WELTINFO\Desktop\Farida\SPTSv2\results\finetune_ic19\checkpoint.pth" # r"C:\Users\WELTINFO\Desktop\Farida\SPTSv2\results\finetune_ic19_latin\checkpoint.pth"
     args.pre_norm = True
     args.pad_rec = True
+    args.conf_threshold = 0.5
+    
     main(args)

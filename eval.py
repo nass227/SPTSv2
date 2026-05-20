@@ -309,6 +309,7 @@ def main(args):
             'evaluation/lexicons/ic15/new_strong_lexicon/pair_voc_img_',
         ]
         lexicon_type = args.lexicon_type
+        
     else:
         raise ValueError('Cannot determine target dataset')
 

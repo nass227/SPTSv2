@@ -1,18 +1,19 @@
+numpy==1.24.4
 cython
-bezier
+bezier==2023.7.28
 pycocotools
 submitit
 torch>=1.5.0
 torchvision>=0.6.0
 scipy
-numpy
 numba
 easydict
 fire
 lmdb
-opencv-contrib-python
+opencv-contrib-python==4.7.0.72
 yacs
-apex
+setuptools
+# apex
 tqdm
 zmq
 transformers
@@ -21,3 +22,4 @@ einops
 cupy-cuda110
 editdistance
 shapely
+typing_extensions
