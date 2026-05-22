@@ -23,6 +23,14 @@ on colab
  export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python SPTSv2/main.py  --train  --train_dataset icdarall_train --data_root /workspace/pfefn/icall  --output_dir ./output/resnet --epochs 150 --batch_size 20 --lr 5e-5 --lr_backbone 1e-6 --pad_rec --weight_decay 1e-4 --warmup_epochs 5 --dropout 0.1 --early_stop --early_stop_patience 30 --val_split 0.2  --num_workers 8 --amp --resume "/workspace/pfefn/output/resnet/checkpoint.pth"> train2.log 2>&1 &
  export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python SPTSv2/main.py  --train  --train_dataset icdarall_train --data_root /workspace/pfefn/icall  --output_dir ./output/resnet --epochs 150 --batch_size 20 --lr 5e-5 --lr_backbone 1e-6 --lr_drop 120 --pad_rec --weight_decay 1e-4 --warmup_epochs 5 --dropout 0.1 --early_stop --early_stop_patience 30 --val_split 0.2  --num_workers 8 --amp --resume "/workspace/pfefn/output/resnet/checkpoint.pth"> train3.log 2>&1 &
 
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python main.py --train --train_dataset ICDAR2015_train --data_root /workspace/pfefn/icdar2015  --lr 5e-4 --lr_backbone 1e-5 --epochs 150 --batch_size 32 --warmup_epochs 10 --pad_rec --output_dir ./output/resnet18_imagenet --amp > train_resnet18.log 2>&1 &
+
+
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python main.py --train --train_dataset icdarall_train_no2019 --data_root /workspace/pfefn/icall --lr 5e-4 --lr_backbone 1e-5 --epochs 150  --batch_size 16 --warmup_epochs 10 --pad_rec  --output_dir ./output/resnet18_pretrain  --amp --early_stop --early_stop_patience 30 --val_split 0.2 --num_workers 8 > train_resnet18_pretrain.log 2>&1 &
+
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && nohup python main.py --train --train_dataset Syntext_train --data_root /workspace/pfefn/synthtext/SynthText --lr 5e-4 --lr_backbone 1e-5 --epochs 150  --batch_size 16 --warmup_epochs 10 --pad_rec  --output_dir ./output/resnet18_pretrain_synth  --amp --early_stop --early_stop_patience 50 --val_split 0.2 --num_workers 8 --resume /workspace/pfefn/SPTSv2/output/resnet18_pretrain_synth/best_model.pth > train_resnet18_pretrain_synth.log 2>&1 &
 """
 import time
 import json
@@ -266,7 +274,7 @@ class EarlyStopping:
 # Checkpoint saving
 # ─────────────────────────────────────────────
 def save_checkpoint(output_dir, model_without_ddp, optimizer, lr_scheduler,
-                    epoch, args, save_full=False, is_best=False, early_stopping=None):
+                    epoch, args, save_full=False, is_best=False, early_stopping=None, val_loss=None):
     """
     Saves:
     - checkpoint.pth          : latest checkpoint (overwritten every epoch)
@@ -280,6 +288,7 @@ def save_checkpoint(output_dir, model_without_ddp, optimizer, lr_scheduler,
         'lr_scheduler': lr_scheduler.state_dict(),
         'epoch':        epoch,
         'args':         args,
+        'val_loss':     val_loss,
     }
     if early_stopping is not None:
         checkpoint['early_stopping'] = early_stopping.state_dict()
@@ -298,6 +307,11 @@ def save_checkpoint(output_dir, model_without_ddp, optimizer, lr_scheduler,
         print(f"Checkpoint saved: epoch {epoch:04d}")
 
     if is_best:
+        utils.save_on_master(
+            model_without_ddp.state_dict(),
+            output_dir / 'best_model.pt'
+        )
+        print(f"Best model saved: best_model.pt (epoch {epoch})")
         utils.save_on_master(checkpoint, output_dir / 'best_model.pth')
         print(f"Best model saved: best_model.pth (epoch {epoch})")
 
@@ -449,9 +463,9 @@ def main(args):
                 and 'optimizer' in checkpoint
                 and 'epoch' in checkpoint):
             optimizer.load_state_dict(checkpoint['optimizer'])
-            # lr_scheduler state is not restored: LR is fully determined by
-            # build_lr_schedule (a pre-computed list indexed by epoch), so the
-            # scheduler object carries no runtime state that matters.
+            # Restore lr_scheduler so warmup doesn't restart from scratch
+            if 'lr_scheduler' in checkpoint:
+                lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
             print(f"Resumed from epoch {args.start_epoch}")
             if 'early_stopping' in checkpoint:
@@ -546,9 +560,10 @@ def main(args):
             save_checkpoint(
                 output_dir, model_without_ddp, optimizer, lr_scheduler,
                 epoch, args,
-                save_full = save_full,
-                is_best   = is_best,
+                save_full      = save_full,
+                is_best        = is_best,
                 early_stopping = early_stopping,
+                val_loss       = current_loss,  # add this line
             )
 
         # ── Log ─────────────────────────────────────────────────────────
