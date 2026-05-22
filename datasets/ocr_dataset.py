@@ -264,8 +264,20 @@ def build(image_set, args):
 
         elif dataset_name == 'icdarall_train':
             img_folder = root / "train_images"/ "train_images"; ann_file = root / "train.json"
+
+        elif dataset_name == 'icdarall_train_no2019':
+            img_folder = root / "train_images"/ "train_images"; ann_file = root / "no2019"/  "train.json"
+
         elif dataset_name == 'icdarall_test':
             img_folder = root / "test_images"/ "test_images"; ann_file = root / "test.json"
+        
+        elif dataset_name == 'ICDAR2015_train':
+            img_folder = root / "train_images"; ann_file = root / "train.json"
+        elif dataset_name == 'ICDAR2015_test':
+            img_folder = root / "test_images"; ann_file = root / "test.json"
+
+        elif dataset_name == 'Syntext_train':
+            img_folder = root ; ann_file = root / "synthtext_train.json"
         
         else:
             raise NotImplementedError

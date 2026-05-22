@@ -178,8 +178,15 @@ def get_args_parser():
 
 def build_lr_schedule(args):
     """
-    Same strategy as main_original.py: linear warmup, then linear decay
-    (high→low over post-warmup epochs, reversed so LR decreases over time).
+    Linear warmup, then linear decay (high→low), with an optional step-drop
+    at --lr_drop epoch: after that epoch the remaining LR values are scaled
+    by 0.1 (matching what StepLR with gamma=0.1 would do if it weren't
+    overridden by the per-epoch manual assignment in train_one_epoch).
+
+    --lr_drop controls two things:
+      1. When the step-drop fires (epochs >= lr_drop get LR * 0.1).
+      2. When extra checkpoint files are saved (unchanged).
+    Set --lr_drop >= --epochs to disable the drop and use pure linear decay.
     """
     if args.warmup_epochs > 0:
         warmup_lr = [
@@ -189,12 +196,21 @@ def build_lr_schedule(args):
         ]
     else:
         warmup_lr = []
+
     decay_epochs = args.epochs - args.warmup_epochs
     decay_lr = [
         max(i * args.lr / args.epochs, args.min_lr) for i in range(decay_epochs)
     ]
     decay_lr.reverse()
-    return warmup_lr + decay_lr
+
+    schedule = warmup_lr + decay_lr
+
+    # Apply step-drop: multiply all per-epoch LR values from lr_drop onward by 0.1
+    if args.lr_drop < args.epochs:
+        for i in range(args.lr_drop, args.epochs):
+            schedule[i] = max(schedule[i] * 0.1, args.min_lr)
+
+    return schedule
 
 
 # ─────────────────────────────────────────────
@@ -282,11 +298,8 @@ def save_checkpoint(output_dir, model_without_ddp, optimizer, lr_scheduler,
         print(f"Checkpoint saved: epoch {epoch:04d}")
 
     if is_best:
-        utils.save_on_master(
-            model_without_ddp.state_dict(),
-            output_dir / 'best_model.pt'
-        )
-        print(f"Best model saved: best_model.pt (epoch {epoch})")
+        utils.save_on_master(checkpoint, output_dir / 'best_model.pth')
+        print(f"Best model saved: best_model.pth (epoch {epoch})")
 
 
 def main(args):
@@ -347,8 +360,9 @@ def main(args):
     if scaler is not None:
         print("Mixed precision training enabled (AMP)")
 
-    # ── StepLR (same as main_original; per-epoch LR comes from build_lr_schedule) ──
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
+    # LR is fully controlled by build_lr_schedule (list indexed by epoch).
+    # StepLR is not used; a no-op placeholder keeps checkpoint state_dict compatible.
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda e: 1.0)
 
     # ── Datasets ────────────────────────────────────────────────────────
     dataset_train = build_dataset(image_set='train', args=args)
@@ -435,8 +449,9 @@ def main(args):
                 and 'optimizer' in checkpoint
                 and 'epoch' in checkpoint):
             optimizer.load_state_dict(checkpoint['optimizer'])
-            if 'lr_scheduler' in checkpoint:
-                lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            # lr_scheduler state is not restored: LR is fully determined by
+            # build_lr_schedule (a pre-computed list indexed by epoch), so the
+            # scheduler object carries no runtime state that matters.
             args.start_epoch = checkpoint['epoch'] + 1
             print(f"Resumed from epoch {args.start_epoch}")
             if 'early_stopping' in checkpoint:
@@ -499,7 +514,6 @@ def main(args):
             args.max_length,
             scaler=scaler,
         )
-        lr_scheduler.step()
 
         # ── Validation loss (teacher-forcing, no grad) ───────────────────
         val_stats = None
