@@ -264,21 +264,32 @@ def build(image_set, args):
 
         elif dataset_name == 'icdarall_train':
             img_folder = root / "train_images"/ "train_images"; ann_file = root / "train.json"
-
-        elif dataset_name == 'icdarall_train_no2019':
-            img_folder = root / "train_images"/ "train_images"; ann_file = root / "no2019"/  "train.json"
-
         elif dataset_name == 'icdarall_test':
             img_folder = root / "test_images"/ "test_images"; ann_file = root / "test.json"
         
-        elif dataset_name == 'ICDAR2015_train':
-            img_folder = root / "train_images"; ann_file = root / "train.json"
-        elif dataset_name == 'ICDAR2015_test':
-            img_folder = root / "test_images"; ann_file = root / "test.json"
+        elif dataset_name == 'ICDAR2013_train':
+            img_folder = root / "2013" / "train_imgs"
+            ann_file = root / "2013" / "train.json"
 
-        elif dataset_name == 'Syntext_train':
-            img_folder = root ; ann_file = root / "synthtext_train.json"
-        
+        elif dataset_name == 'ICDAR2013_test':
+            img_folder = root / "2013" / "test_imgs"
+            ann_file = root / "2013" / "test.json"
+
+        elif dataset_name == 'ICDAR2015_train':
+            img_folder = root / "2015" / "train_images"
+            ann_file = root / "2015" / "train.json"
+
+        elif dataset_name == 'ICDAR2015_test':
+            img_folder = root / "2015" / "test_images"
+            ann_file = root / "2015" / "test.json"
+            
+        elif dataset_name == 'ICDAR2017_train':
+            img_folder = root / "2017" / "train_images"
+            ann_file = root / "2017" / "train.json"
+
+        elif dataset_name == 'ICDAR2017_test':
+            img_folder = root / "2017" / "test_images"
+            ann_file = root / "2017" / "test.json"
         else:
             raise NotImplementedError
         
