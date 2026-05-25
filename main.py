@@ -127,6 +127,8 @@ def get_args_parser():
                         help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument("--local_rank", type=int, default=0)
+    parser.add_argument('--amp', action='store_true',
+                        help='Enable automatic mixed precision (float16) training')
 
     return parser
 
@@ -165,6 +167,7 @@ def main(args):
     optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,
                                   weight_decay=args.weight_decay)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
+    scaler = torch.cuda.amp.GradScaler() if args.amp else None
 
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
@@ -200,6 +203,8 @@ def main(args):
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
+            if scaler is not None and 'scaler' in checkpoint:
+                scaler.load_state_dict(checkpoint['scaler'])
 
     if args.eval:
         if dataset_val is None:
@@ -226,7 +231,8 @@ def main(args):
             sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch,
-            args.clip_max_norm, learning_rate_schedule, args.print_freq, args.max_length)
+            args.clip_max_norm, learning_rate_schedule, args.print_freq, args.max_length,
+            scaler=scaler)
         lr_scheduler.step()
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
@@ -240,6 +246,7 @@ def main(args):
                     'lr_scheduler': lr_scheduler.state_dict(),
                     'epoch': epoch,
                     'args': args,
+                    **({'scaler': scaler.state_dict()} if scaler is not None else {}),
                 }, checkpoint_path)
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},

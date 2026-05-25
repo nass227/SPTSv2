@@ -19,8 +19,9 @@ from util.visualize import vis_output_seqs, extract_result_from_output_seqs, con
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0, 
-                    lr_scheduler: list = [0], print_freq: int = 10, text_length: int = 25):
+                    device: torch.device, epoch: int, max_norm: float = 0,
+                    lr_scheduler: list = [0], print_freq: int = 10, text_length: int = 25,
+                    scaler=None):
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -34,15 +35,17 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         output_label_seqs = output_label_seqs.to(device)
         if not all(input_label_seqs.tolist()):
             continue
-        output_seqs = torch.cat([output_box_seqs.flatten(),output_label_seqs.flatten() ])
-        outputs_box, outputs_label = model(samples, input_box_seqs, input_label_seqs, text_length)
-        outputs_box = outputs_box.reshape(-1, outputs_box.shape[-1])
-        outputs_label = outputs_label.reshape(-1, outputs_label.shape[-1])
-        outputs = torch.cat([outputs_box,outputs_label],0)
-        loss = criterion(outputs, output_seqs.flatten())
+        output_seqs = torch.cat([output_box_seqs.flatten(), output_label_seqs.flatten()])
 
-        loss_dict = {'at':loss}
-        weight_dict = {'at':1}
+        with torch.cuda.amp.autocast(enabled=scaler is not None):
+            outputs_box, outputs_label = model(samples, input_box_seqs, input_label_seqs, text_length)
+            outputs_box = outputs_box.reshape(-1, outputs_box.shape[-1])
+            outputs_label = outputs_label.reshape(-1, outputs_label.shape[-1])
+            outputs = torch.cat([outputs_box, outputs_label], 0)
+            loss = criterion(outputs, output_seqs.flatten())
+
+        loss_dict = {'at': loss}
+        weight_dict = {'at': 1}
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
@@ -60,10 +63,18 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             sys.exit(1)
 
         optimizer.zero_grad()
-        losses.backward()
-        if max_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        optimizer.step()
+        if scaler is not None:
+            scaler.scale(losses).backward()
+            if max_norm > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            losses.backward()
+            if max_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            optimizer.step()
          
         metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
