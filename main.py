@@ -168,6 +168,10 @@ def main(args):
                                   weight_decay=args.weight_decay)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
     scaler = torch.cuda.amp.GradScaler() if args.amp else None
+    if args.amp:
+        print('Mixed precision (AMP) enabled: training with float16 autocast and GradScaler.')
+    else:
+        print('Mixed precision (AMP) disabled: training in full precision (float32).')
 
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
