@@ -126,6 +126,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         if not math.isfinite(loss_value):
             print(f"WARNING: Non-finite loss {loss_value}, skipping batch")
+            torch.cuda.empty_cache() 
             continue
 
         if scaler is not None:
