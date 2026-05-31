@@ -93,19 +93,6 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         input_label_seqs = input_label_seqs.to(device)
         output_box_seqs = output_box_seqs.to(device)
         output_label_seqs = output_label_seqs.to(device)
-        # samples = samples.to(device)
-
-        # Debug: find the exact bad batch
-        if torch.all(samples.mask):
-            print(f"WARNING: fully masked batch at iteration, skipping")
-            continue
-
-        # Also check for any all-masked sample in the batch
-        if samples.mask.flatten(1).all(dim=1).any():
-            print(f"WARNING: batch contains a fully masked sample, skipping")
-            continue
-
-
 
         if not all(input_label_seqs.tolist()):
             continue
@@ -130,18 +117,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
         loss_value = losses_reduced_scaled.item()
 
-        # if not math.isfinite(loss_value):
-        #     print("Loss is {}, stopping training".format(loss_value))
-        #     print(loss_dict_reduced)
-        #     sys.exit(1)
-
-        optimizer.zero_grad()  # ← move this UP, before the isfinite check
-
         if not math.isfinite(loss_value):
-            print(f"WARNING: Non-finite loss {loss_value}, skipping batch")
-            torch.cuda.empty_cache() 
-            continue
+            print("Loss is {}, stopping training".format(loss_value))
+            print(loss_dict_reduced)
+            sys.exit(1)
 
+        optimizer.zero_grad()
         if scaler is not None:
             scaler.scale(losses).backward()
             if max_norm > 0:
@@ -154,20 +135,6 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             if max_norm > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
             optimizer.step()
-
-        # optimizer.zero_grad()
-        # if scaler is not None:
-        #     scaler.scale(losses).backward()
-        #     if max_norm > 0:
-        #         scaler.unscale_(optimizer)
-        #         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        #     scaler.step(optimizer)
-        #     scaler.update()
-        # else:
-        #     losses.backward()
-        #     if max_norm > 0:
-        #         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        #     optimizer.step()
 
         metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
