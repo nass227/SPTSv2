@@ -117,11 +117,15 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
         loss_value = losses_reduced_scaled.item()
 
+        # if not math.isfinite(loss_value):
+        #     print("Loss is {}, stopping training".format(loss_value))
+        #     print(loss_dict_reduced)
+        #     sys.exit(1)
         if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
-            print(loss_dict_reduced)
-            sys.exit(1)
-
+            print(f"WARNING: Non-finite loss {loss_value}, skipping batch")
+            optimizer.zero_grad()
+            continue
+        
         optimizer.zero_grad()
         if scaler is not None:
             scaler.scale(losses).backward()
