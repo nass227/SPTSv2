@@ -93,6 +93,19 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         input_label_seqs = input_label_seqs.to(device)
         output_box_seqs = output_box_seqs.to(device)
         output_label_seqs = output_label_seqs.to(device)
+        # samples = samples.to(device)
+
+        # Debug: find the exact bad batch
+        if torch.all(samples.mask):
+            print(f"WARNING: fully masked batch at iteration, skipping")
+            continue
+
+        # Also check for any all-masked sample in the batch
+        if samples.mask.flatten(1).all(dim=1).any():
+            print(f"WARNING: batch contains a fully masked sample, skipping")
+            continue
+
+
 
         if not all(input_label_seqs.tolist()):
             continue
